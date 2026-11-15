@@ -1,0 +1,153 @@
+{
+ "projection": "south polar stereographic, true scale at pole; +y toward lon 0, +x toward lon 90E",
+ "row_order": "row 0 = minimum y; tile t_i_j has i along +x and j along +y",
+ "tile_format": "int16 little-endian, tile_px x tile_px, one count = unit_m metres above a 1737.4 km sphere",
+ "base": "public/data/heights.bin (250 m, see terrain.json) is the fallback below every level",
+ "levels": [
+  {
+   "label": "20 m",
+   "dir": "fine20",
+   "product": "LDEM_80S_20MPP_ADJ",
+   "source": "https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEM_80S_20MPP_ADJ.TIF",
+   "pixel_m": 20.0,
+   "tile_px": 512,
+   "tiles": 50,
+   "half_extent_m": 256000.0,
+   "unit_m": 0.5,
+   "use_radius_m": 10000,
+   "coverage": "boxes around the named sites",
+   "tile_count": 68,
+   "bytes": 35651584,
+   "sha256_all_tiles": "4e7d92ee46f6c429ca8cdcdbcd727c20f8b953e0441abd35d2be6d70716b620b",
+   "box_half_width_m": 10500.0,
+   "sites": [
+    {
+     "name": "Shackleton ridge",
+     "lat": -89.45,
+     "lon": -137.31
+    },
+    {
+     "name": "de Gerlache rim",
+     "lat": -88.71,
+     "lon": -68.1
+    },
+    {
+     "name": "Chang'e-7 candidate",
+     "lat": -88.8,
+     "lon": 123.4
+    },
+    {
+     "name": "IM-2 Athena target",
+     "lat": -84.78,
+     "lon": 29.13
+    },
+    {
+     "name": "Malapert massif",
+     "lat": -85.99,
+     "lon": 2.9
+    },
+    {
+     "name": "Haworth",
+     "lat": -87.45,
+     "lon": -5.17
+    },
+    {
+     "name": "LCROSS impact, Cabeus",
+     "lat": -84.68,
+     "lon": -48.72
+    },
+    {
+     "name": "Shackleton floor",
+     "lat": -89.67,
+     "lon": 129.78
+    }
+   ],
+   "present": [
+    "22_22",
+    "23_22",
+    "24_22",
+    "26_22",
+    "27_22",
+    "28_22",
+    "22_23",
+    "23_23",
+    "24_23",
+    "25_23",
+    "26_23",
+    "27_23",
+    "28_23",
+    "22_24",
+    "23_24",
+    "24_24",
+    "25_24",
+    "26_24",
+    "27_24",
+    "28_24",
+    "20_25",
+    "21_25",
+    "22_25",
+    "24_25",
+    "25_25",
+    "26_25",
+    "20_26",
+    "21_26",
+    "22_26",
+    "20_27",
+    "21_27",
+    "22_27",
+    "23_31",
+    "24_31",
+    "25_31",
+    "23_32",
+    "24_32",
+    "25_32",
+    "23_33",
+    "24_33",
+    "25_33",
+    "12_34",
+    "13_34",
+    "14_34",
+    "12_35",
+    "13_35",
+    "14_35",
+    "24_35",
+    "25_35",
+    "26_35",
+    "12_36",
+    "13_36",
+    "14_36",
+    "24_36",
+    "25_36",
+    "26_36",
+    "24_37",
+    "25_37",
+    "26_37",
+    "31_37",
+    "32_37",
+    "33_37",
+    "31_38",
+    "32_38",
+    "33_38",
+    "31_39",
+    "32_39",
+    "33_39"
+   ]
+  },
+  {
+   "label": "80 m",
+   "dir": "fine",
+   "product": "LDEM_80S_80MPP_ADJ",
+   "source": "https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEM_80S_80MPP_ADJ.TIF",
+   "pixel_m": 80.0,
+   "tile_px": 400,
+   "tiles": 16,
+   "half_extent_m": 256000.0,
+   "unit_m": 0.5,
+   "use_radius_m": 20000,
+   "coverage": "whole map",
+   "tile_count": 256,
+   "bytes": 81920000,
+   "sha256_all_tiles": "784f93c5975781cced7cb46bdf85688340388e9314949b2a33167a1df3f8bce0"
+  }
+ ]
+}

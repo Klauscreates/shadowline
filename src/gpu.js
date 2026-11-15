@@ -94,6 +94,21 @@ uniform sampler2D uHeight;
 uniform float uExag;
 out vec2 vUv;
 out float vH;
+#ifdef PATCH
+// local patch of finer terrain: heights come from its own texture, one texel per vertex
+uniform sampler2D uPatchH;
+uniform float uPN, uPH0, uPSpan, uL;
+uniform vec2 uP0;          // map coordinates (m) of the patch's first vertex
+out vec2 vPuv;
+void main() {
+  vPuv = uv * (uPN - 1.0) / uPN + 0.5 / uPN;
+  float h = textureLod(uPatchH, vPuv, 0.0).r + uPH0;
+  vec2 m = uP0 + uv * uPSpan;
+  vUv = m / (2.0 * uL) + 0.5;
+  vH = h;
+  gl_Position = projectionMatrix * viewMatrix * vec4(m.x * 0.001, h * 0.001 * uExag, -m.y * 0.001, 1.0);
+}
+#else
 void main() {
   vUv = uv;
   float h = textureLod(uHeight, uv, 0.0).r;
@@ -102,6 +117,7 @@ void main() {
   p.y += h * 0.001 * uExag;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
 }
+#endif
 `;
 
 const TERRAIN_FRAG = /* glsl */`
@@ -112,8 +128,14 @@ uniform float uL, uPixel, uTexel, uAccumN;
 uniform int uLayer;
 uniform vec3 uHeatMax;   // largest sunlight / Earth / both share on the map
 uniform vec3 uHover;      // xy = map uv, z = on/off
+uniform vec4 uHole;       // map rectangle (min x, min y, max x, max y) drawn by a finer patch instead
 in vec2 vUv;
 in float vH;
+#ifdef PATCH
+uniform sampler2D uPatchH;
+uniform float uPN, uPSpan;
+in vec2 vPuv;
+#endif
 const float RM = 1737400.0;
 
 vec3 heat(float t) {   // dark blue -> magenta -> orange -> pale yellow
@@ -151,9 +173,19 @@ void main() {
   vec2 m = (vUv * 2.0 - 1.0) * uL;
   float r = length(m);
   if (r > uL) discard;
+  if (m.x > uHole.x && m.y > uHole.y && m.x < uHole.z && m.y < uHole.w) discard;
 
-  float hx = (textureLod(uHeight, vUv + vec2(uTexel, 0.0), 0.0).r - textureLod(uHeight, vUv - vec2(uTexel, 0.0), 0.0).r) / (2.0 * uPixel);
-  float hy = (textureLod(uHeight, vUv + vec2(0.0, uTexel), 0.0).r - textureLod(uHeight, vUv - vec2(0.0, uTexel), 0.0).r) / (2.0 * uPixel);
+  // gradient of the 250 m base map (500 m baseline)
+  float bhx = (textureLod(uHeight, vUv + vec2(uTexel, 0.0), 0.0).r - textureLod(uHeight, vUv - vec2(uTexel, 0.0), 0.0).r) / (2.0 * uPixel);
+  float bhy = (textureLod(uHeight, vUv + vec2(0.0, uTexel), 0.0).r - textureLod(uHeight, vUv - vec2(0.0, uTexel), 0.0).r) / (2.0 * uPixel);
+#ifdef PATCH
+  // surface shape from the finer grid of this patch
+  float pe = 1.0 / uPN, pc = uPSpan / (uPN - 1.0);
+  float hx = (textureLod(uPatchH, vPuv + vec2(pe, 0.0), 0.0).r - textureLod(uPatchH, vPuv - vec2(pe, 0.0), 0.0).r) / (2.0 * pc);
+  float hy = (textureLod(uPatchH, vPuv + vec2(0.0, pe), 0.0).r - textureLod(uPatchH, vPuv - vec2(0.0, pe), 0.0).r) / (2.0 * pc);
+#else
+  float hx = bhx, hy = bhy;
+#endif
 
   // radial direction at this map point
   float t = r / (2.0 * RM), t2 = t * t;
@@ -176,7 +208,7 @@ void main() {
     vec3 earthshine = light.g * vec3(0.010, 0.022, 0.045) * (0.4 + hill);
     col = regolith * (sunCol * direct * 1.25 + shade + earthshine);
   } else if (uLayer == 4) {
-    float deg = degrees(atan(length(vec2(hx, hy))));
+    float deg = degrees(atan(length(vec2(bhx, bhy))));   // always the 250 m map, to match the legend
     col = slopeColor(deg) * (0.30 + 0.80 * hill);
   } else {
     vec4 acc = texture(uAccum, vUv);
@@ -217,6 +249,7 @@ export class Gpu {
     const n = terrain.n;
 
     const floatLinear = renderer.extensions.has('OES_texture_float_linear');
+    this.floatLinear = floatLinear;
     let data = terrain.h, type = THREE.FloatType;
     if (!floatLinear) {
       data = new Uint16Array(terrain.h.length);
@@ -276,6 +309,7 @@ export class Gpu {
       uHeatMax: { value: new THREE.Vector3(1, 1, 1) },
       uAccumN: { value: 0 },
       uHover: { value: new THREE.Vector3(0, 0, 0) },
+      uHole: { value: new THREE.Vector4(1, 1, -1, -1) },
     };
     this.terrainMat = new THREE.ShaderMaterial({
         uniforms: this.terrainUniforms,
@@ -283,6 +317,14 @@ export class Gpu {
       fragmentShader: TERRAIN_FRAG,
     });
     this.accumCount = 0;
+  }
+
+  /** Material for a local patch of finer terrain; shares the light map, layer and hover state. */
+  patchMaterial(uniforms, order) {
+    return new THREE.ShaderMaterial({
+      uniforms, defines: { PATCH: 1 }, vertexShader: TERRAIN_VERT, fragmentShader: TERRAIN_FRAG,
+      polygonOffset: true, polygonOffsetFactor: -order, polygonOffsetUnits: -order,
+    });
   }
 
   setSky(sample) {

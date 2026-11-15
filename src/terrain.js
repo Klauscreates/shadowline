@@ -1,7 +1,7 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 // CPU side of the terrain: loading, map <-> sphere maths, height sampling,
 // horizon profiles and per-site time series.
-import { SUN_RADIUS_RAD } from './ephemeris.js?v=24';
+import { SUN_RADIUS_RAD } from './ephemeris.js?v=26';
 
 export const R = 1737400;          // lunar reference radius, m
 const DEG = Math.PI / 180;
@@ -60,6 +60,122 @@ export class Terrain {
   }
 }
 
+/**
+ * Finer terrain as a small tile pyramid. Each level is one NASA LOLA polar grid kept at its
+ * native pixels (no resampling) and cut into tiles that are fetched only around the sites
+ * being tested. public/data/pyramid.json lists the levels. A level may cover the whole map
+ * (80 m) or only boxes around the named sites (20 m). The 250 m base map (Terrain above)
+ * is always the last fallback.
+ */
+export const BASE_LABEL = '250 m';
+const BASE_PRODUCT = 'LDEM_60S_240MPP_ADJ resampled to 250 m';
+const fetchTile = (path) => fetch(path).then((r) => {
+  if (!r.ok) throw new Error('tile ' + r.status);
+  return r.arrayBuffer();
+});
+const fetchJson = (path) => fetch(path).then((r) => {
+  if (!r.ok) throw new Error('no tile pyramid');
+  return r.json();
+});
+
+export class TileLevel {
+  constructor(meta, root = 'public/data/', loader = fetchTile) {
+    this.meta = meta;
+    this.label = meta.label; this.product = meta.product; this.radius = meta.use_radius_m;
+    this.nt = meta.tiles; this.tp = meta.tile_px; this.px = meta.pixel_m; this.L = meta.half_extent_m; this.unit = meta.unit_m;
+    this.n = this.nt * this.tp;
+    this.dir = root + meta.dir + '/';
+    this.loader = loader;
+    // tiles that exist on the server; null = every tile
+    this.present = meta.present ? new Set(meta.present.map((s) => { const [i, j] = s.split('_').map(Number); return j * this.nt + i; })) : null;
+    this.tiles = new Array(this.nt * this.nt).fill(null);
+    this.pending = new Map();
+  }
+  has(i, j) { return i >= 0 && j >= 0 && i < this.nt && j < this.nt && (!this.present || this.present.has(j * this.nt + i)); }
+  loadTile(i, j) {
+    const k = j * this.nt + i;
+    if (this.tiles[k]) return Promise.resolve();
+    if (!this.pending.has(k)) {
+      this.pending.set(k, this.loader(`${this.dir}t_${i}_${j}.bin`).then((buf) => { this.tiles[k] = new Int16Array(buf); this.pending.delete(k); }));
+    }
+    return this.pending.get(k);
+  }
+  _range(x, y, radius) {
+    const span = this.tp * this.px;
+    return [Math.floor((x - radius + this.L) / span), Math.floor((x + radius + this.L) / span),
+      Math.floor((y - radius + this.L) / span), Math.floor((y + radius + this.L) / span)];
+  }
+  /** Fetch every existing tile within `radius` metres of a map point. */
+  ensure(x, y, radius) {
+    const [i0, i1, j0, j1] = this._range(x, y, radius), jobs = [];
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (this.has(i, j)) jobs.push(this.loadTile(i, j));
+    return Promise.all(jobs);
+  }
+  /** True when every tile touching the square of half-width `radius` around a point exists on the server. */
+  exists(x, y, radius) {
+    const [i0, i1, j0, j1] = this._range(x, y, radius);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (!this.has(i, j)) return false;
+    return true;
+  }
+  /** True when every tile touching the square of half-width `radius` around a point is loaded. */
+  covers(x, y, radius) {
+    const [i0, i1, j0, j1] = this._range(x, y, radius);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (!this.has(i, j) || !this.tiles[j * this.nt + i]) return false;
+    return true;
+  }
+  /** One native pixel, or NaN if its tile is not loaded. */
+  at(gi, gj) {
+    if (gi < 0 || gj < 0 || gi >= this.n || gj >= this.n) return NaN;
+    const tp = this.tp, ti = (gi / tp) | 0, tj = (gj / tp) | 0;
+    const tile = this.tiles[tj * this.nt + ti];
+    return tile ? tile[(gj - tj * tp) * tp + (gi - ti * tp)] * this.unit : NaN;
+  }
+  /** Bilinear height (m), or NaN where the tiles are not loaded. */
+  height(x, y) {
+    const fx = (x + this.L) / this.px - 0.5, fy = (y + this.L) / this.px - 0.5;
+    const i = Math.floor(fx), j = Math.floor(fy), a = fx - i, b = fy - j;
+    return (this.at(i, j) * (1 - a) + this.at(i + 1, j) * a) * (1 - b) + (this.at(i, j + 1) * (1 - a) + this.at(i + 1, j + 1) * a) * b;
+  }
+  /** Slope in degrees over a two-pixel baseline, or NaN. */
+  slope(x, y) {
+    const d = this.px;
+    const gx = (this.height(x + d, y) - this.height(x - d, y)) / (2 * d);
+    const gy = (this.height(x, y + d) - this.height(x, y - d)) / (2 * d);
+    return Math.atan(Math.hypot(gx, gy)) / DEG;
+  }
+}
+
+export class TilePyramid {
+  /** levels: TileLevel[]; kept finest first. */
+  constructor(levels) { this.levels = [...levels].sort((a, b) => a.px - b.px); }
+  static async open(root = 'public/data/', loader = fetchTile, readJson = fetchJson) {
+    const meta = await readJson(root + 'pyramid.json');
+    return new TilePyramid(meta.levels.map((m) => new TileLevel(m, root, loader)));
+  }
+  /** The same loaded tiles, restricted to the levels whose label is listed (for comparing levels). */
+  only(labels) { return new TilePyramid(this.levels.filter((l) => labels.includes(l.label))); }
+  /** Fetch what a site analysis at (x, y) can use from every level. */
+  ensure(x, y, extra = 2000) { return Promise.all(this.levels.map((l) => l.ensure(x, y, l.radius + extra))); }
+  /** Levels that fully cover their own use radius around a site, finest first. */
+  usable(x, y) { return this.levels.filter((l) => l.covers(x, y, l.radius + l.px * 2)); }
+  /** Height from the finest loaded level at a point, or NaN if none has it. */
+  height(x, y) {
+    for (const l of this.levels) { const h = l.height(x, y); if (h === h) return h; }
+    return NaN;
+  }
+}
+
+/** Plain-language record of which grids a site analysis used. */
+function describeTerrain(used) {
+  if (!used.length) return { label: BASE_LABEL, hi: false, levels: [BASE_LABEL], note: 'NASA LOLA 240 m data on a 250 m grid', products: 'LOLA ' + BASE_PRODUCT };
+  const where = (l, k) => (k ? 'to ' : 'within ') + (l.radius / 1000) + ' km' + (k ? '' : ' of the site');
+  return {
+    label: used[0].label, hi: true, levels: [...used.map((l) => l.label), BASE_LABEL],
+    note: 'NASA LOLA ' + used.map((l, k) => `${l.label} grid ${where(l, k)}`).join(', ') + ', 250 m grid beyond',
+    products: 'LOLA ' + used.map((l, k) => `${l.product} (${l.label}) ${where(l, k)}`).join(', ') + ', ' + BASE_PRODUCT + ' beyond',
+  };
+}
+
 // --- map <-> sphere (south polar stereographic, pole frame: z toward the south pole) ---
 export function mapToLatLon(x, y) {
   const r = Math.hypot(x, y);
@@ -101,38 +217,54 @@ export const HORIZON_N = 720;
  * Terrain horizon elevation (radians) in HORIZON_N azimuths (clockwise from north)
  * for an observer OBSERVER_M above the ground. Lunar curvature is included because
  * the march is done in true 3D.
+ *
+ * With a tile pyramid, each finer level is read out to its own use radius (20 m grid to
+ * 10 km, 80 m grid to 20 km) and the 250 m base map beyond. A finer level is used only
+ * when it covers its whole use radius around the site, so the report never names a grid
+ * that supplied only part of the near horizon.
  */
-export function horizonProfile(terrain, x, y) {
+export function horizonProfile(terrain, x, y, pyramid = null) {
   const { up, north, east } = localFrame(x, y);
-  const rad0 = R + terrain.height(x, y) + OBSERVER_M;
+  const used = pyramid ? pyramid.usable(x, y) : [];
+  const lead = used[0] || null;
+  const h0 = lead ? lead.height(x, y) : terrain.height(x, y);
+  const rad0 = R + h0 + OBSERVER_M;
   const p0 = [up[0] * rad0, up[1] * rad0, up[2] * rad0];
   const out = new Float32Array(HORIZON_N);
+  // Base map alone: 120 m first step, growing 2 % a step up to 1500 m.
+  // With finer levels: start at half a pixel and never step farther than one pixel of the grid being read.
+  const dt0 = lead ? lead.px / 2 : 120, maxSteps = lead ? 6000 : 560;
   for (let k = 0; k < HORIZON_N; k++) {
     const az = (k / HORIZON_N) * 2 * Math.PI;
     const ca = Math.cos(az), sa = Math.sin(az);
     const dx = north[0] * ca + east[0] * sa;
     const dy = north[1] * ca + east[1] * sa;
     const dz = north[2] * ca + east[2] * sa;
-    let best = -0.5, t = 0, dt = 120;
-    for (let i = 0; i < 400; i++) {
+    let best = -0.5, t = 0, dt = dt0;
+    for (let i = 0; i < maxSteps; i++) {
       t += dt;
       const px = p0[0] + dx * t, py = p0[1] + dy * t, pz = p0[2] + dz * t;
       const len = Math.hypot(px, py, pz);
       const kmap = 2 * R / (len + pz);
       const mx = px * kmap, my = py * kmap;
       if (!terrain.inside(mx, my)) break;
-      const s = (R + terrain.height(mx, my)) / len;
+      let hh = NaN, cap = 1500;
+      for (let q = 0; q < used.length; q++) {
+        if (t < used[q].radius) { hh = used[q].height(mx, my); if (hh === hh) { cap = used[q].px; break; } }
+      }
+      if (hh !== hh) hh = terrain.height(mx, my);
+      const s = (R + hh) / len;
       const vx = px * s - p0[0], vy = py * s - p0[1], vz = pz * s - p0[2];
       const vu = vx * up[0] + vy * up[1] + vz * up[2];
       const vh = Math.sqrt(Math.max(vx * vx + vy * vy + vz * vz - vu * vu, 1e-6));
       const el = Math.atan2(vu, vh);
       if (el > best) best = el;
-      dt = Math.min(dt * 1.02, 1500);
+      dt = Math.min(dt * 1.02, cap);
       if (t > 330000) break;
     }
     out[k] = best;
   }
-  return { horizon: out, up, north, east, p0 };
+  return { horizon: out, up, north, east, p0, fine: !!lead, lead, terrain: describeTerrain(used), height: h0 };
 }
 
 function horizonAt(h, az) {
@@ -169,8 +301,8 @@ function longestRun(flags, stepHours) {
 }
 
 /** Full site report over a list of ephemeris samples. */
-export function analyseSite(terrain, x, y, samples, stepHours) {
-  const profile = horizonProfile(terrain, x, y);
+export function analyseSite(terrain, x, y, samples, stepHours, pyramid = null) {
+  const profile = horizonProfile(terrain, x, y, pyramid);
   const n = samples.length;
   const sun = new Float32Array(n), earth = new Uint8Array(n);
   const sunAz = new Float32Array(n), sunEl = new Float32Array(n);
@@ -185,14 +317,16 @@ export function analyseSite(terrain, x, y, samples, stepHours) {
     dark[i] = s.sunFrac < 0.05 ? 1 : 0;
     mute[i] = s.earthVis ? 0 : 1;
   }
-  const slope = terrain.slope(x, y);
+  // slope over a two-pixel baseline of the finest grid used at the site
+  let slope = terrain.slope(x, y), slopeBaseM = 2 * terrain.px;
+  if (profile.lead) { const sf = profile.lead.slope(x, y); if (sf === sf) { slope = sf; slopeBaseM = 2 * profile.lead.px; } }
   const sunPct = sunSum / n, earthPct = earthSum / n, bothPct = bothSum / n;
   const slopeSafe = Math.min(Math.max((15 - slope) / 10, 0), 1);
   let score = 100 * (0.45 * sunPct + 0.35 * earthPct + 0.20 * slopeSafe);
   if (slope > 15) score *= 0.5;
   const ll = mapToLatLon(x, y);
   return {
-    x, y, lat: ll.lat, lon: ll.lon, elevation: terrain.height(x, y), slope,
+    x, y, lat: ll.lat, lon: ll.lon, elevation: profile.height, slope, slopeBaseM, fine: profile.fine, terrain: profile.terrain,
     sunPct, earthPct, bothPct, score: Math.round(score),
     longestDarkH: longestRun(dark, stepHours), longestMuteH: longestRun(mute, stepHours),
     profile, series: { sun, earth, sunAz, sunEl, earthAz, earthEl },

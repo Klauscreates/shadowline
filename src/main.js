@@ -1,12 +1,13 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
-import { moonSky, loadHorizons, horizonsRange } from './ephemeris.js?v=24';
-import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N } from './terrain.js?v=24';
-import { Gpu } from './gpu.js?v=24';
+import { moonSky, loadHorizons, horizonsRange } from './ephemeris.js?v=26';
+import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N, TilePyramid } from './terrain.js?v=26';
+import { Gpu } from './gpu.js?v=26';
+import { LocalPatch, gridSurface } from './patch.js?v=26';
 
 // If the browser kept an older copy of the page next to this newer script, reload once to get a matching set.
-const BUILD = '24';
+const BUILD = '26';
 if (document.querySelector('meta[name="build"]')?.content !== BUILD) {
   if (!/[?&]fresh=/.test(location.search)) location.replace(location.pathname + '?fresh=' + Date.now());
   throw new Error('This page is out of date. Please reload.');
@@ -15,8 +16,11 @@ if (document.querySelector('meta[name="build"]')?.content !== BUILD) {
 const $ = (id) => document.getElementById(id);
 const DEG = Math.PI / 180;
 const DAY = 86400000;
-const EXAG = 3;
+const EXAG_VIEW = 3;      // default display stretch of heights; 1 = true scale
+let EXAG = EXAG_VIEW;     // display only: every sunlight / Earth / slope number uses true heights
 const PIN_COLORS = ['#ffc65a', '#5db4ff', '#58e0a0', '#ff8fb1'];
+const BASE_MESH_N = 768;  // vertices a side of the whole-map mesh
+const coarse = matchMedia('(pointer: coarse)').matches;
 const FEATURES = [
   ['South Pole', -90, 0, 'pole'],
   ['Shackleton', -89.67, 129.78], ['de Gerlache', -88.5, -87.1], ['Shoemaker', -88.14, 45.91],
@@ -36,17 +40,90 @@ camera.position.set(0, 1500, 1);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.07;
-controls.minDistance = 25;
+controls.minDistance = 10;
 controls.maxDistance = 1400;
 controls.maxPolarAngle = 86 * DEG;
 controls.zoomSpeed = 0.9;
 controls.enabled = false;
 
 const toWorldDir = (d) => new THREE.Vector3(d[0], d[2], -d[1]);
-let terrain, gpu;
+let terrain, gpu, pyramid = null;
 
+/** Height (m) of the surface as drawn: a finer patch where one is shown, otherwise the 250 m map. Display only. */
+function surfaceH(x, y) {
+  if (detail.inner && detail.inner.contains(x, y)) return detail.inner.surface(x, y);
+  if (detail.outer && detail.outer.contains(x, y)) return detail.outer.surface(x, y);
+  return terrain.height(x, y);
+}
 function mapToWorld(x, y, lift = 0) {
-  return new THREE.Vector3(x / 1000, terrain.height(x, y) * EXAG / 1000 + lift, -y / 1000);
+  return new THREE.Vector3(x / 1000, surfaceH(x, y) * EXAG / 1000 + lift, -y / 1000);
+}
+
+// ---------- sharper visible terrain near the camera target ----------
+// Two nested mesh patches follow the point the camera looks at: an 80 m patch, and inside it a
+// 20 m patch where 20 m tiles are bundled. They change the picture only. Shadows on them still
+// come from the 250 m light map, and no number in the report is taken from them.
+const detail = { outer: null, inner: null, L80: null, L20: null, last: 0, busy80: false, busy20: false, label: '' };
+const NO_HOLE = [1, 1, -1, -1];
+function initDetail() {
+  if (!pyramid) return;
+  detail.L80 = pyramid.levels.find((l) => l.px === 80) || null;
+  detail.L20 = pyramid.levels.find((l) => l.px === 20) || null;
+  if (!detail.L80) return;
+  const n = coarse ? 385 : 513;
+  detail.outer = new LocalPatch(gpu, n, 80, 1);
+  scene.add(detail.outer.mesh);
+  if (detail.L20) { detail.inner = new LocalPatch(gpu, n, 20, 2); scene.add(detail.inner.mesh); }
+  // the drawn surface of the base mesh (768 x 768 vertices over the whole map)
+  const bn = BASE_MESH_N, bc = terrain.L * 2 / (bn - 1);
+  detail.baseSurface = (x, y) => gridSurface(-terrain.L, -terrain.L, bc, bn, (i, j) => terrain.height(-terrain.L + i * bc, -terrain.L + j * bc), x, y);
+}
+function updateDetail(now) {
+  const o = detail.outer; if (!o || now - detail.last < 200) return;
+  detail.last = now;
+  const dist = camera.position.distanceTo(controls.target);
+  const cx = controls.target.x * 1000, cy = -controls.target.z * 1000;
+  const L80 = detail.L80, L20 = detail.L20, inn = detail.inner;
+  let changed = false;
+  // 80 m patch
+  const wantO = dist < 170 && Math.hypot(cx, cy) < terrain.L * 0.85;
+  if (!wantO) { if (o.active) { o.hide(); changed = true; } }
+  else if (!o.active || Math.max(Math.abs(cx - o.cx), Math.abs(cy - o.cy)) > o.span / 4) {
+    const r = o.span / 2 + 400;
+    if (L80.covers(cx, cy, r)) {
+      o.build(cx, cy, (x, y) => { const h = L80.height(x, y); return h === h ? h : terrain.height(x, y); }, detail.baseSurface, -L80.L + 40);
+      if (inn) inn.hide();          // its edge was fitted to the old 80 m patch
+      changed = true;
+    } else if (!detail.busy80) {
+      detail.busy80 = true;
+      L80.ensure(cx, cy, r).catch(() => {}).then(() => { detail.busy80 = false; });
+    }
+  }
+  // 20 m patch, only where 20 m tiles are bundled and it fits inside the 80 m patch
+  if (inn) {
+    const r = inn.span / 2 + 100;
+    const fits = o.active && Math.max(Math.abs(cx - (o.x0 + o.span / 2)), Math.abs(cy - (o.y0 + o.span / 2))) < o.span / 2 - r - 3000;
+    const wantI = wantO && fits && dist < 70 && L20.exists(cx, cy, r);
+    if (!wantI) { if (inn.active) { inn.hide(); changed = true; } }
+    else if (!inn.active || Math.max(Math.abs(cx - inn.cx), Math.abs(cy - inn.cy)) > inn.span / 4) {
+      if (L20.covers(cx, cy, r)) {
+        inn.build(cx, cy, (x, y) => { const h = L20.height(x, y); return h === h ? h : o.surface(x, y); }, (x, y) => o.surface(x, y), -L20.L + 10);
+        changed = true;
+      } else if (!detail.busy20) {
+        detail.busy20 = true;
+        L20.ensure(cx, cy, r).catch(() => {}).then(() => { detail.busy20 = false; });
+      }
+    }
+  }
+  if (!changed) return;
+  if (o.active) o.hole(gpu.terrainUniforms.uHole.value); else gpu.terrainUniforms.uHole.value.fromArray(NO_HOLE);
+  if (inn && inn.active) inn.hole(o.uniforms.uHole.value); else o.uniforms.uHole.value.fromArray(NO_HOLE);
+  for (const p of state.pins) placePin(p);
+  const g = inn && inn.active ? '20 m' : o.active ? '80 m' : '250 m';
+  if (g !== detail.label) {
+    detail.label = g;
+    $('detail').innerHTML = `Surface near the view centre drawn from the <b>${g}</b> grid${g === '250 m' ? '' : ' · shadows still from the 250 m map'}`;
+  }
 }
 
 // stars
@@ -174,7 +251,7 @@ function rebuildWindow() {
   gpu.terrainUniforms.uHeatMax.value.set(1, 1, 1);
   gpu.resetAccum();
   state.t = Math.min(Math.max(state.t, state.start), state.start + span * DAY - 1);
-  for (const p of state.pins) p.report = analyseSite(terrain, p.x, p.y, state.samples, state.stepHours);
+  for (const p of state.pins) p.report = analyseSite(terrain, p.x, p.y, state.samples, state.stepHours, p.fine ? pyramid : null);
   // show the window's start and end under the time slider
   $('winStart').textContent = dayLabelY(state.start);
   $('winEnd').textContent = dayLabelY(state.start + span * DAY);
@@ -194,25 +271,51 @@ function nearestFeature(x, y) {
   return best;
 }
 
+/** Fetch the finer tiles around a site, then redo its horizon, slope and report with the finest grid available there. */
+async function refinePin(pin) {
+  if (!pyramid) return;
+  try {
+    await pyramid.ensure(pin.x, pin.y);
+    if (!state.pins.includes(pin)) return;
+    pin.fine = true; pin.mis = null;
+    pin.report = analyseSite(terrain, pin.x, pin.y, state.samples, state.stepHours, pyramid);
+    state.windows = null;
+    renderPanel();
+  } catch (e) { console.warn('fine terrain not used for site ' + pin.letter, e); }
+}
+/** Put a pin's marker on the drawn surface (depends on the vertical scale in use). */
+function placePin(pin) {
+  pin.group.position.copy(mapToWorld(pin.x, pin.y));
+  sizePins();
+}
+/** Markers shrink as the camera comes closer, so they do not hide the ground they mark. */
+function sizePins() {
+  const s = Math.min(1, Math.max(0.06, camera.position.distanceTo(controls.target) / 170));
+  for (const p of state.pins) {
+    p.group.scale.setScalar(s);
+    p.top.copy(p.group.position); p.top.y += 46 * s;
+  }
+}
 function addPin(x, y, select = true, name = null) {
   if (state.pins.length >= PIN_COLORS.length) removePin(0);
   const used = new Set(state.pins.map((p) => p.color));
   const color = PIN_COLORS.find((c) => !used.has(c));
   const letter = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[state.nextLetter++ % 26];
-  const base = mapToWorld(x, y);
   const group = new THREE.Group();
   const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 46, 8), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 }));
-  beam.position.set(base.x, base.y + 23, base.z);
+  beam.position.y = 23;
   const ring = new THREE.Mesh(new THREE.RingGeometry(2.6, 3.4, 48), new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.95, depthTest: false }));
   ring.rotation.x = -Math.PI / 2;
-  ring.position.set(base.x, base.y + 0.4, base.z);
+  ring.position.y = 0.4;
   group.add(beam, ring);
   scene.add(group);
-  const top = new THREE.Vector3(base.x, base.y + 46, base.z);
+  const top = new THREE.Vector3();
   const label = addLabel(letter, 'pin', () => top);
   label.el.style.background = color; label.el.style.color = '#0a0d14';
-  const pin = { x, y, color, letter, name, group, ring, label, near: nearestFeature(x, y), report: analyseSite(terrain, x, y, state.samples, state.stepHours) };
+  const pin = { x, y, color, letter, name, group, beam, ring, top, label, near: nearestFeature(x, y), report: analyseSite(terrain, x, y, state.samples, state.stepHours) };
   state.pins.push(pin);
+  placePin(pin);
+  refinePin(pin);
   if (select || state.selected < 0) state.selected = state.pins.length - 1;
   $('hint').classList.add('gone');
   renderPanel();
@@ -233,7 +336,6 @@ const fmtLat = (v) => Math.abs(v).toFixed(2) + '°' + (v < 0 ? 'S' : 'N');
 const fmtLon = (v) => Math.abs(v).toFixed(1) + '°' + (v < 0 ? 'W' : 'E');
 const pct = (v) => Math.round(v * 100) + '%';
 const pct1 = (v) => (v * 100).toFixed(v > 0.9995 || v < 0.0005 ? 0 : 1) + '%';
-const coarse = matchMedia('(pointer: coarse)').matches;
 const dayLabel = (ms) => { const d = new Date(ms); return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate(); };
 const dayLabelY = (ms) => { const d = new Date(ms); return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate() + ', ' + d.getUTCFullYear(); };
 const windowName = () => (state.spanDays >= 100 ? '1 year' : state.spanDays > 31 ? '3 months' : '29.53 days');
@@ -357,6 +459,8 @@ function compareHtml() {
     ${row('Sun + Earth', R.map((r) => r.bothPct), pct1, true)}
     ${sec('Ground')}
     ${row('Slope', R.map((r) => r.slope), (v) => v.toFixed(1) + '°', false)}
+    <tr><th>Slope baseline</th>${R.map((r) => `<td>${Math.round(r.slopeBaseM / 10) * 10} m</td>`).join('')}</tr>
+    <tr><th>Terrain grid</th>${R.map((r) => `<td>${r.terrain.label}</td>`).join('')}</tr>
     ${row('Elevation', R.map((r) => r.elevation), (v) => Math.round(v).toLocaleString() + ' m', null)}
     ${row('Latitude', R.map((r) => r.lat), (v) => Math.abs(v).toFixed(2) + '°S', null)}
     ${row('Longitude', R.map((r) => r.lon), (v) => Math.abs(v).toFixed(1) + '°' + (v < 0 ? 'W' : 'E'), null)}
@@ -404,9 +508,9 @@ function siteSummary(p) {
     `Sunlit ${pct1(r.sunPct)} of window, longest dark stretch ${fmtDur(r.longestDarkH)}`,
     `Earth in view ${pct1(r.earthPct)} of window, longest loss of contact ${fmtDur(r.longestMuteH)}`,
     `Sunlight and Earth contact together ${pct1(r.bothPct)}`,
-    `Slope ${r.slope.toFixed(1)} deg (500 m baseline)`,
+    `Slope ${r.slope.toFixed(1)} deg (${Math.round(r.slopeBaseM / 10) * 10} m baseline)`,
     `Score ${r.score}/100 (45% sunlight, 35% Earth contact, 20% slope)`,
-    `Terrain: LOLA LDEM_60S_240MPP_ADJ resampled to 250 m; observer 2 m above ground`,
+    `Terrain: ${r.terrain.products}; observer 2 m above ground`,
   ].join('\n');
 }
 function siteCsv(p) {
@@ -424,7 +528,8 @@ function siteCsv(p) {
     `# both_fraction,${r.bothPct.toFixed(4)}`,
     `# score,${r.score}`,
     `# step_hours,${state.stepHours}`,
-    '# terrain,LOLA LDEM_60S_240MPP_ADJ resampled to 250 m per pixel',
+    `# terrain,${r.terrain.products.replace(/,/g, ';')}`,
+    `# slope_baseline_m,${Math.round(r.slopeBaseM)}`,
     '# observer_height_m,2',
     `# sun_earth_positions,${dataSourceText()}`,
     '# notes,elevations are of the body centre above the local horizontal; azimuth is clockwise from north; sun_visible_fraction is the share of the solar disk diameter above the terrain horizon',
@@ -483,7 +588,7 @@ function renderPanel() {
       </div>
       <div>
         <div class="site-name">Site ${p.letter}${siteLabel(p)}</div>
-        <div class="site-coord">${Math.abs(r.lat).toFixed(3)}°${r.lat < 0 ? 'S' : 'N'} · ${Math.abs(r.lon).toFixed(2)}°${r.lon < 0 ? 'W' : 'E'}</div>
+        <div class="site-coord"><span class="res ${r.terrain.hi ? 'hi' : ''}" title="${r.terrain.note}">${r.terrain.label} terrain</span>${Math.abs(r.lat).toFixed(3)}°${r.lat < 0 ? 'S' : 'N'} · ${Math.abs(r.lon).toFixed(2)}°${r.lon < 0 ? 'W' : 'E'}</div>
         <div class="verdict">${verdict(r)}</div>
       </div>
     </div>
@@ -502,7 +607,7 @@ function renderPanel() {
       </div></div>
     <div class="step"><div class="step-h"><i>3</i><b>Ground</b><span>is it safe to set down</span></div>
       <div class="metrics">
-        <div class="metric"><div class="k">Slope</div><div class="v" style="color:${r.slope > 15 ? 'var(--bad)' : r.slope > 10 ? 'var(--sun)' : 'var(--good)'}">${r.slope.toFixed(1)}°</div><div class="s">over a 500 m baseline</div></div>
+        <div class="metric"><div class="k">Slope</div><div class="v" style="color:${r.slope > 15 ? 'var(--bad)' : r.slope > 10 ? 'var(--sun)' : 'var(--good)'}">${r.slope.toFixed(1)}°</div><div class="s">over a ${Math.round(r.slopeBaseM / 10) * 10} m baseline</div></div>
         <div class="metric"><div class="k">Elevation</div><div class="v">${Math.round(r.elevation).toLocaleString()} m</div><div class="s">vs 1,737.4 km sphere</div></div>
       </div></div>
     <div class="step"><div class="step-h"><i>4</i><b>Both at once</b><span>powered and in contact</span></div>
@@ -519,7 +624,7 @@ function renderPanel() {
     <div class="block-title">How the score adds up</div>
     ${scoreTable(r)}
     <div class="export"><button data-act="csv">Download data (CSV)</button><button data-act="copy">Copy summary</button></div>
-    <div class="note">Window: ${new Date(state.start).toISOString().slice(0, 10)} + ${windowName()}, sampled every ${state.stepHours} h. Terrain: NASA LOLA 240 m data on a 250 m grid; antenna 2 m above ground. Sun and Earth positions: ${dataSourceText()}.</div>`;
+    <div class="note">Window: ${new Date(state.start).toISOString().slice(0, 10)} + ${windowName()}, sampled every ${state.stepHours} h. Terrain: ${r.terrain.note}${!p.fine && pyramid ? ' (loading finer grids…)' : ''}; antenna 2 m above ground. Sun and Earth positions: ${dataSourceText()}.</div>`;
   updateViewOffset();
   if (panel.classList.contains('mini')) { chartCache = null; return; }
   buildCharts();
@@ -598,7 +703,7 @@ function buildCharts() {
 function drawCharts() {
   drawHview();
   if (state.compare) { drawCompare(); return; }
-  const p = state.pins[state.selected]; if (!p || !chartCache) return;
+  const p = state.pins[state.selected]; if (!p || !chartCache || !chartCache.strip.width || !chartCache.horizon.width) return;
   const now = skyAt(p.report.profile, state.sky);
   const f = (state.t - state.start) / (state.spanDays * DAY);
   const strip = $('strip'), hor = $('horizon'); if (!strip || !hor) return;
@@ -706,11 +811,11 @@ function pick(cx, cy) {
   if (d.y >= -1e-4) return null;
   const yMax = terrain.meta.max_m * EXAG / 1000, yMin = terrain.meta.min_m * EXAG / 1000;
   let t = o.y > yMax ? (yMax - o.y) / d.y : 0;
-  const tEnd = (yMin - o.y) / d.y, step = 0.3;
+  const tEnd = (yMin - o.y) / d.y, step = detail.outer && detail.outer.active ? 0.1 : 0.3;
   const below = (tt) => {
     const mx = (o.x + d.x * tt) * 1000, my = -(o.z + d.z * tt) * 1000;
     if (Math.hypot(mx, my) > terrain.L * 0.97) return null;
-    return o.y + d.y * tt <= terrain.height(mx, my) * EXAG / 1000;
+    return o.y + d.y * tt <= surfaceH(mx, my) * EXAG / 1000;
   };
   for (; t <= tEnd + step; t += step) {
     if (below(t)) {
@@ -766,6 +871,29 @@ function updateHover() {
   el.style.left = Math.min(hoverXY.x + 16, innerWidth - 150) + 'px';
   el.style.top = (hoverXY.y + 16) + 'px';
 }
+
+// ---------- vertical scale: 3x stretched (default) or true scale ----------
+const featureLabels = [];
+function setExag(v) {
+  if (!terrain || v === EXAG) return;
+  const groundY = () => surfaceH(controls.target.x * 1000, -controls.target.z * 1000) * EXAG / 1000;
+  const before = groundY();
+  EXAG = v;
+  gpu.terrainUniforms.uExag.value = v;
+  // keep the camera the same distance above the ground it is looking at
+  const dy = groundY() - before;
+  tween = null; controls.enabled = true;
+  controls.target.y += dy; camera.position.y += dy;
+  for (const fl of featureLabels) fl.pos.copy(mapToWorld(fl.x, fl.y, fl.lift));
+  for (const p of state.pins) placePin(p);
+  const b = $('scaleBtn'), real = v === 1;
+  b.classList.toggle('true', real);
+  b.setAttribute('aria-pressed', String(real));
+  b.querySelector('b').textContent = real ? 'True scale' : 'Heights ×' + EXAG_VIEW;
+  b.querySelector('span').textContent = real ? '1 : 1' : 'exaggerated';
+  b.title = real ? 'Heights are drawn at true scale. Click to stretch them ' + EXAG_VIEW + '× again.' : 'Heights are drawn ' + EXAG_VIEW + '× taller than real so craters read clearly. Click for true scale.';
+}
+$('scaleBtn').addEventListener('click', () => setExag(EXAG === 1 ? EXAG_VIEW : 1));
 
 // ---------- camera moves ----------
 let tween = null;
@@ -902,7 +1030,7 @@ function lookFrom(pin, body) {
   const px = tgt.x - (w.x / l) * back, pz = tgt.z - (w.z / l) * back;
   let py = tgt.y + 3.2;
   const mx = px * 1000, my = -pz * 1000;
-  if (terrain.inside(mx, my)) py = Math.max(py, terrain.height(mx, my) * EXAG / 1000 + 1.6);
+  if (terrain.inside(mx, my)) py = Math.max(py, surfaceH(mx, my) * EXAG / 1000 + 1.6);
   flyCamera(new THREE.Vector3(px, py, pz), tgt, 1500);
 }
 function flyCamera(toPos, toTarget, ms = 1600) {
@@ -1092,7 +1220,9 @@ function frame(now) {
 
   stepTween(now);
   controls.update();
+  updateDetail(now);
   updateHover();
+  sizePins();
   for (const p of state.pins) p.ring.scale.setScalar(1 + 0.12 * Math.sin(now / 400 + p.x));
   renderer.render(scene, camera);
   updateLabels();
@@ -1107,19 +1237,22 @@ async function boot() {
   $('startDate').value = new Date(state.start).toISOString().slice(0, 10);
   try { await loadHorizons(); } catch (e) { console.warn('JPL Horizons table not loaded; positions are computed in the browser', e); }
   terrain = await loadTerrain((f) => { $('loadText').textContent = `Loading NASA terrain… ${Math.round(f * 100)}%`; });
+  try { pyramid = await TilePyramid.open(); } catch (e) { pyramid = null; }
   gpu = new Gpu(renderer, terrain, 1024);
   gpu.terrainUniforms.uExag.value = EXAG;
   const size = terrain.L * 2 / 1000;
-  const geo = new THREE.PlaneGeometry(size, size, 767, 767);
+  const geo = new THREE.PlaneGeometry(size, size, BASE_MESH_N - 1, BASE_MESH_N - 1);
   geo.rotateX(-Math.PI / 2);
   const mesh = new THREE.Mesh(geo, gpu.terrainMat);
   mesh.frustumCulled = false;
   scene.add(mesh);
+  initDetail();
 
   for (const f of FEATURES) {
     const [x, y] = latLonToMap(f[1], f[2]);
-    const pos = mapToWorld(x, y, f[3] ? 9 : 5);
-    addLabel(f[0], f[3] || '', () => pos);
+    const fl = { x, y, lift: f[3] ? 9 : 5, pos: mapToWorld(x, y, f[3] ? 9 : 5) };
+    featureLabels.push(fl);
+    addLabel(f[0], f[3] || '', () => fl.pos);
   }
   addLabel('SUN', 'sky sun', () => sunSprite.position);
   addLabel('EARTH', 'sky earth', () => earthMesh.position);
@@ -1138,7 +1271,7 @@ async function boot() {
     $('intro').classList.add('gone');
     flyCamera(new THREE.Vector3(-170, 210, 330), new THREE.Vector3(0, 0, 0), 3600);
   }, 500);
-  window.__shadowline = { state, terrain, gpu, addPin, camera, controls, pick };
+  window.__shadowline = { state, terrain, gpu, pyramid, detail, surfaceH, addPin, camera, controls, pick, setExag, get exag() { return EXAG; } };
 }
 boot().catch((err) => {
   console.error(err);
