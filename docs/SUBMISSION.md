@@ -49,6 +49,9 @@ Shadowline is an interactive 3D map of the Moon's south pole that shows where a 
 - "Earth in view" means the centre of Earth is above the terrain horizon for an antenna 2 m above ground. It is not a radio link budget.
 - The score is a comparison aid, not a mission rule. Research and education only.
 
+**Benefits and goals**
+My goal is for Shadowline to help future NASA missions to the Moon. Teams planning a south-pole landing have to deal with limited sunlight for power and limited contact with Earth, and I want them to have better, easier software for comparing landing sites on real terrain. Today it is a research and education tool. I want to keep developing it until it can support real mission planning with real mission data. It can also help teachers and students see why small changes in place or date matter so much at the lunar south pole.
+
 **Tools:** JavaScript, WebGL2 (three.js), astronomy-engine, Python (NumPy, SciPy, rasterio) for the one-time terrain conversion.
 
 ## Use of artificial intelligence
