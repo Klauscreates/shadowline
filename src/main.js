@@ -130,6 +130,7 @@ const state = {
   accumList: [], accumIdx: 0, heat: null,
   lightDirty: true,
   wantBest: false,
+  compare: false,
 };
 state.t = state.start;
 
@@ -137,6 +138,18 @@ function sampleAt(ms) {
   const s = moonSky(new Date(ms));
   return { t: ms, sunDir: s.sun.dir, earthPos: s.earth.pos, earthDir: s.earth.dir, sunLat: s.sun.lat, sunLon: s.sun.lon, earthLat: s.earth.lat, earthLon: s.earth.lon };
 }
+
+// Named sites. Coordinates are approximate (lat, lon east, degrees).
+const PRESETS = [
+  ['Shackleton ridge', 'Long-sunlight ridge beside Shackleton', -89.45, -137.31],
+  ['de Gerlache rim', 'Sunlit rim, Artemis III candidate area', -88.71, -68.10],
+  ["Chang'e-7 candidate", 'Peak near Shackleton, not final', -88.80, 123.40],
+  ['IM-2 Athena target', 'Mons Mouton, CLPS, 2025', -84.78, 29.13],
+  ['Malapert massif', 'High ground facing Earth', -85.99, 2.90],
+  ['Haworth', 'Artemis III candidate area', -87.45, -5.17],
+  ['LCROSS impact, Cabeus', 'Water found here in 2009', -84.68, -48.72],
+  ['Shackleton floor', 'Permanent shadow, for contrast', -89.67, 129.78],
+];
 
 function rebuildWindow() {
   const span = state.spanDays;
@@ -167,7 +180,7 @@ function nearestFeature(x, y) {
   return best;
 }
 
-function addPin(x, y, select = true) {
+function addPin(x, y, select = true, name = null) {
   if (state.pins.length >= PIN_COLORS.length) removePin(0);
   const used = new Set(state.pins.map((p) => p.color));
   const color = PIN_COLORS.find((c) => !used.has(c));
@@ -184,7 +197,7 @@ function addPin(x, y, select = true) {
   const top = new THREE.Vector3(base.x, base.y + 46, base.z);
   const label = addLabel(letter, 'pin', () => top);
   label.el.style.background = color; label.el.style.color = '#0a0d14';
-  const pin = { x, y, color, letter, group, ring, label, near: nearestFeature(x, y), report: analyseSite(terrain, x, y, state.samples, state.stepHours) };
+  const pin = { x, y, color, letter, name, group, ring, label, near: nearestFeature(x, y), report: analyseSite(terrain, x, y, state.samples, state.stepHours) };
   state.pins.push(pin);
   if (select || state.selected < 0) state.selected = state.pins.length - 1;
   $('hint').classList.add('gone');
@@ -210,6 +223,63 @@ const coarse = matchMedia('(pointer: coarse)').matches;
 const dayLabel = (ms) => { const d = new Date(ms); return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate(); };
 const windowName = () => (state.spanDays >= 100 ? '1 year' : state.spanDays > 31 ? '3 months' : '29.53 days');
 
+const siteLabel = (p) => (p.name ? ' · ' + p.name : p.near ? ' · near ' + p.near : '');
+const fmtIn = (h) => (h < 1 ? 'under 1 h' : h >= 48 ? (h / 24).toFixed(1) + ' days' : Math.round(h) + ' h');
+
+/** Time from the selected moment to the next change of Sun / Earth visibility at a site. */
+function nextEvents(r, sunOn, earthOn) {
+  const S = r.series, n = S.sun.length;
+  const f = (state.t - state.start) / (state.stepHours * 3600000);
+  const i0 = Math.min(n - 1, Math.max(0, Math.floor(f)));
+  const scan = (cur, on) => {
+    for (let j = i0 + 1; j < n; j++) if (on(j) !== cur) return (j - f) * state.stepHours;
+    return null;
+  };
+  return { sunH: scan(sunOn, (i) => S.sun[i] > 0.05), earthH: scan(earthOn, (i) => S.earth[i] === 1) };
+}
+const sunEventText = (on, h) => (h === null ? (on ? 'No sunset in this window' : 'No sunrise in this window') : (on ? 'Sunset in ' : 'Sunrise in ') + fmtIn(h));
+const earthEventText = (on, h) => (h === null ? (on ? 'No Earthset in this window' : 'No Earthrise in this window') : (on ? 'Earthset in ' : 'Earthrise in ') + fmtIn(h));
+const clearText = (el, hor) => { const d = (el - hor) / DEG; return `${Math.abs(d).toFixed(1)}° ${d >= 0 ? 'above' : 'below'} the terrain`; };
+
+function compareHtml() {
+  const P = state.pins, R = P.map((p) => p.report);
+  const row = (label, vals, fmt, hi, cls = '') => {
+    const m = hi ? Math.max(...vals) : Math.min(...vals), mixed = vals.some((v) => v !== m);
+    return `<tr class="${cls}"><th>${label}</th>${vals.map((v) => `<td class="${hi !== null && mixed && v === m ? 'best' : ''}">${fmt(v)}</td>`).join('')}</tr>`;
+  };
+  const sec = (t) => `<tr class="sec"><th colspan="${P.length + 1}">${t}</th></tr>`;
+  return `<div class="cmp-wrap"><table class="cmp">
+    <thead><tr><th></th>${P.map((p, i) => `<td data-i="${i}" title="Open full report"><span class="pin-dot" style="background:${p.color}">${p.letter}</span><div class="cmp-name">${p.name || (p.near ? 'near ' + p.near : '')}</div></td>`).join('')}</tr></thead>
+    <tbody>
+    ${row('Score', R.map((r) => r.score), (v) => v, true, 'big')}
+    ${sec('At the selected time')}
+    <tr><th>Sun</th>${P.map((_, i) => `<td id="cmpSun${i}"></td>`).join('')}</tr>
+    <tr><th>Earth</th>${P.map((_, i) => `<td id="cmpEarth${i}"></td>`).join('')}</tr>
+    ${sec('Power')}
+    ${row('Sunlit', R.map((r) => r.sunPct), pct1, true)}
+    ${row('Longest dark', R.map((r) => r.longestDarkH), fmtDur, false)}
+    ${sec('Communications')}
+    ${row('Earth in view', R.map((r) => r.earthPct), pct1, true)}
+    ${row('Longest gap', R.map((r) => r.longestMuteH), fmtDur, false)}
+    ${row('Sun + Earth', R.map((r) => r.bothPct), pct1, true)}
+    ${sec('Ground')}
+    ${row('Slope', R.map((r) => r.slope), (v) => v.toFixed(1) + '°', false)}
+    ${row('Elevation', R.map((r) => r.elevation), (v) => Math.round(v).toLocaleString() + ' m', null)}
+    ${row('Latitude', R.map((r) => r.lat), (v) => Math.abs(v).toFixed(2) + '°S', null)}
+    ${row('Longitude', R.map((r) => r.lon), (v) => Math.abs(v).toFixed(1) + '°' + (v < 0 ? 'W' : 'E'), null)}
+    </tbody></table></div>
+    <div class="note">Green marks the best value in each row. ${coarse ? 'Tap' : 'Click'} a site letter to open its full report. Window: ${new Date(state.start).toISOString().slice(0, 10)} + ${windowName()}.</div>`;
+}
+function drawCompare() {
+  state.pins.forEach((p, i) => {
+    const s = $('cmpSun' + i), e = $('cmpEarth' + i); if (!s || !e) return;
+    const now = skyAt(p.report.profile, state.sky), sunOn = now.sunFrac > 0.05, earthOn = !!now.earthVis;
+    const ev = nextEvents(p.report, sunOn, earthOn);
+    s.innerHTML = `<span class="${sunOn ? 'on-s' : 'off'}">${sunOn ? 'Lit' : 'Dark'}</span><small>${sunEventText(sunOn, ev.sunH).replace(' in this window', '').replace(' in ', '<br>in ')}</small>`;
+    e.innerHTML = `<span class="${earthOn ? 'on-e' : 'off'}">${earthOn ? 'In view' : 'Hidden'}</span><small>${earthEventText(earthOn, ev.earthH).replace(' in this window', '').replace(' in ', '<br>in ')}</small>`;
+  });
+}
+
 function scoreParts(r) {
   const slopeSafe = Math.min(Math.max((15 - r.slope) / 10, 0), 1);
   return { sun: 45 * r.sunPct, earth: 35 * r.earthPct, slope: 20 * slopeSafe, slopeSafe, halved: r.slope > 15 };
@@ -226,7 +296,7 @@ function scoreTable(r) {
 function siteSummary(p) {
   const r = p.report;
   return [
-    `Shadowline site ${p.letter}${p.near ? ' (near ' + p.near + ')' : ''}`,
+    `Shadowline site ${p.letter}${siteLabel(p)}`,
     `Latitude ${r.lat.toFixed(4)} deg, longitude ${r.lon.toFixed(4)} deg E, elevation ${Math.round(r.elevation)} m`,
     `Window: ${new Date(state.start).toISOString().slice(0, 10)} UTC + ${windowName()}, step ${state.stepHours} h`,
     `Sunlit ${pct1(r.sunPct)} of window, longest dark stretch ${fmtDur(r.longestDarkH)}`,
@@ -267,6 +337,7 @@ function siteCsv(p) {
 function verdict(r) {
   const weak = [];
   if (r.sunPct < 0.5) weak.push(`little sunlight (${pct(r.sunPct)})`);
+  else if (r.longestDarkH > 120) weak.push(`${fmtDur(r.longestDarkH)} of unbroken darkness`);
   if (r.earthPct < 0.5) weak.push(`poor Earth contact (${pct(r.earthPct)})`);
   if (r.slope > 10) weak.push(`steep ground (${r.slope.toFixed(0)}°)`);
   if (!weak.length) {
@@ -287,8 +358,17 @@ function renderPanel() {
     `<button class="pin-tab ${i === state.selected ? 'on' : ''}" data-i="${i}">
        <span class="pin-dot" style="background:${p.color}">${p.letter}</span>
        <b>${p.report.score}</b><span class="x" data-x="${i}" title="Remove">✕</span>
-     </button>`).join('');
+     </button>`).join('') + (state.pins.length > 1 ? `<button class="pin-tab cmp ${state.compare ? 'on' : ''}" data-cmp="1">Compare</button>` : '');
+  if (state.pins.length < 2) state.compare = false;
   if (state.selected < 0 || state.selected >= state.pins.length) state.selected = 0;
+  if (state.compare) {
+    $('pinTabs').querySelectorAll('[data-i]').forEach((b) => b.classList.remove('on'));
+    $('siteBody').innerHTML = compareHtml();
+    chartCache = null;
+    updateViewOffset();
+    drawCompare();
+    return;
+  }
   const p = state.pins[state.selected], r = p.report;
   const circ = 2 * Math.PI * 34;
   $('siteBody').innerHTML = `
@@ -299,7 +379,7 @@ function renderPanel() {
         <div class="num"><div>${r.score}<small>SCORE</small></div></div>
       </div>
       <div>
-        <div class="site-name">Site ${p.letter}${p.near ? ' · near ' + p.near : ''}</div>
+        <div class="site-name">Site ${p.letter}${siteLabel(p)}</div>
         <div class="site-coord">${Math.abs(r.lat).toFixed(3)}°${r.lat < 0 ? 'S' : 'N'} · ${Math.abs(r.lon).toFixed(2)}°${r.lon < 0 ? 'W' : 'E'}</div>
         <div class="verdict">${verdict(r)}</div>
       </div>
@@ -411,6 +491,7 @@ function buildCharts() {
 }
 
 function drawCharts() {
+  if (state.compare) { drawCompare(); return; }
   const p = state.pins[state.selected]; if (!p || !chartCache) return;
   const now = skyAt(p.report.profile, state.sky);
   const f = (state.t - state.start) / (state.spanDays * DAY);
@@ -430,19 +511,24 @@ function drawCharts() {
   dot(now.earthAz, now.earthEl, '#5db4ff', 5);
   dot(now.sunAz, now.sunEl, '#ffc65a', 4);
   const ns = $('nowSun'), ne = $('nowEarth');
-  ns.className = 'now-chip sun ' + (now.sunFrac > 0.05 ? 'on' : 'off');
-  ns.innerHTML = `<b>${now.sunFrac > 0.95 ? 'In sunlight' : now.sunFrac > 0.05 ? 'Partial sun ' + pct(now.sunFrac) : 'In shadow'}</b>Sun ${(now.sunEl / DEG).toFixed(1)}° high`;
-  ne.className = 'now-chip earth ' + (now.earthVis ? 'on' : 'off');
-  ne.innerHTML = `<b>${now.earthVis ? 'Earth in view' : 'No Earth contact'}</b>Earth ${(now.earthEl / DEG).toFixed(1)}° high`;
+  const sunOn = now.sunFrac > 0.05, earthOn = !!now.earthVis;
+  const ev = nextEvents(p.report, sunOn, earthOn);
+  ns.className = 'now-chip sun ' + (sunOn ? 'on' : 'off');
+  ns.innerHTML = `<b>${now.sunFrac > 0.95 ? 'In sunlight' : sunOn ? 'Partial sun ' + pct(now.sunFrac) : 'In shadow'}</b><span>Sun ${clearText(now.sunEl, now.sunHor)}</span><em>${sunEventText(sunOn, ev.sunH)}</em>`;
+  ne.className = 'now-chip earth ' + (earthOn ? 'on' : 'off');
+  ne.innerHTML = `<b>${earthOn ? 'Earth in view' : 'No Earth contact'}</b><span>Earth ${clearText(now.earthEl, now.earthHor)}</span><em>${earthEventText(earthOn, ev.earthH)}</em>`;
 }
 
 $('pinTabs').addEventListener('click', (e) => {
   const x = e.target.closest('[data-x]');
   if (x) { removePin(+x.dataset.x); return; }
+  if (e.target.closest('[data-cmp]')) { state.compare = !state.compare; renderPanel(); return; }
   const b = e.target.closest('[data-i]');
-  if (b) { state.selected = +b.dataset.i; renderPanel(); flyTo(state.pins[state.selected]); }
+  if (b) { state.selected = +b.dataset.i; state.compare = false; renderPanel(); flyTo(state.pins[state.selected]); }
 });
 $('siteBody').addEventListener('click', (e) => {
+  const col = e.target.closest('table.cmp thead [data-i]');
+  if (col) { state.selected = +col.dataset.i; state.compare = false; renderPanel(); flyTo(state.pins[state.selected]); return; }
   const act = e.target.dataset?.act, pin = state.pins[state.selected];
   if (act === 'csv' && pin) {
     const url = URL.createObjectURL(new Blob([siteCsv(pin)], { type: 'text/csv' }));
@@ -666,6 +752,38 @@ $('findBest').addEventListener('click', () => {
   state.wantBest = true; $('findBest').disabled = true; $('findBest').textContent = 'Scanning the window…';
 });
 $('aboutBtn').addEventListener('click', () => $('about').showModal());
+
+// ---------- add a site: named sites and typed coordinates ----------
+const fmtPreset = (lat, lon) => `${Math.abs(lat).toFixed(2)}°S · ${Math.abs(lon).toFixed(2)}°${lon < 0 ? 'W' : 'E'}`;
+$('presetList').innerHTML = PRESETS.map((s, i) => `<button type="button" data-p="${i}"><b>${s[0]}</b><span>${s[1]}</span><i>${fmtPreset(s[2], s[3])}</i></button>`).join('');
+function dropSite(lat, lon, name) {
+  const [x, y] = latLonToMap(lat, lon);
+  if (!terrain || !terrain.inside(x, y)) return false;
+  const pin = addPin(x, y, true, name);
+  $('sites').close();
+  flyTo(pin);
+  return true;
+}
+const coordMsg = (t, err) => { $('coordMsg').textContent = t; $('coordMsg').classList.toggle('err', !!err); };
+$('addSite').addEventListener('click', () => { coordMsg('The map covers the south pole out to about 81.6°S.'); $('sites').showModal(); });
+$('sitesClose').addEventListener('click', () => $('sites').close());
+$('sites').addEventListener('click', (e) => { if (e.target === $('sites')) $('sites').close(); });
+$('presetList').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-p]'); if (!b) return;
+  const s = PRESETS[+b.dataset.p];
+  dropSite(s[2], s[3], s[0]);
+});
+$('coordForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const num = (v) => parseFloat(String(v).replace(',', '.').replace(/[^0-9.+-]/g, ''));
+  let lat = num($('latIn').value), lon = num($('lonIn').value);
+  if (!isFinite(lat) || !isFinite(lon)) { coordMsg('Enter both numbers, for example 89.45 and 137.31.', true); return; }
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 360) { coordMsg('Latitude must be 0 to 90 and longitude 0 to 360.', true); return; }
+  lat = -Math.abs(lat);
+  if (/w/i.test($('lonIn').value) || $('lonHemi').value === 'W') lon = -Math.abs(lon);
+  lon = ((lon + 540) % 360) - 180;
+  if (!dropSite(lat, lon, null)) coordMsg('That point is off this map, which covers the south pole out to about 81.6°S.', true);
+});
 
 // ---------- loop ----------
 function resize() {

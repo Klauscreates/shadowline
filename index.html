@@ -47,9 +47,11 @@
 
 <div id="actions">
   <button id="findBest" class="primary">✦ Find best sites</button>
+  <button id="addSite">＋ Add a site</button>
   <button id="clearPins" hidden>Clear pins</button>
-  <button id="aboutBtn">How it works</button>
 </div>
+
+<button id="aboutBtn" aria-label="How it works" title="How it works">?</button>
 
 <aside id="panel" hidden>
   <button id="panelToggle" aria-label="Collapse or expand the site report" title="Collapse / expand">▾</button>
@@ -88,12 +90,27 @@
   </div>
 </footer>
 
-<dialog id="about">
+<dialog id="sites" class="modal">
+  <div class="modal-h"><h2>Add a site</h2><button id="sitesClose" aria-label="Close">✕</button></div>
+  <div class="block-title">Type coordinates</div>
+  <form id="coordForm">
+    <label>Latitude °S<input id="latIn" type="text" inputmode="decimal" autocomplete="off" placeholder="89.45"></label>
+    <label>Longitude °<input id="lonIn" type="text" inputmode="decimal" autocomplete="off" placeholder="137.31"></label>
+    <label>East / West<select id="lonHemi"><option value="E">East</option><option value="W">West</option></select></label>
+    <button class="primary" type="submit">Drop pin</button>
+  </form>
+  <div class="note" id="coordMsg">The map covers the south pole out to about 81.6°S.</div>
+  <div class="block-title">Notable south-pole sites</div>
+  <div id="presetList"></div>
+  <div class="note">Coordinates are approximate. Mission targets can change; check the mission's own pages before relying on them.</div>
+</dialog>
+
+<dialog id="about" class="modal">
   <h2>How Shadowline works</h2>
   <p><b>What you see.</b> A 512 km wide map of the Moon's south pole built from NASA's Lunar Orbiter Laser Altimeter elevation data. Heights are stretched 3× so craters read clearly.</p>
   <p><b>Live light.</b> For the chosen moment, the app works out where the Sun and Earth sit in the Moon's sky and traces a ray from every point of the map towards them. If terrain blocks the ray, that point is in shadow. The Moon's curve is included. The Sun is treated as a disk, so shadow edges are soft.</p>
   <p><b>Heat maps.</b> The same test is repeated across the whole time window and added up: share of time in sunlight, share of time Earth is above the horizon, and both together.</p>
-  <p><b>Site test.</b> A click measures the horizon in 720 directions around that spot, then steps through the window to find sunlight, the longest dark stretch, Earth contact, and the longest loss of contact.</p>
+  <p><b>Site test.</b> Click the map, pick a named site, or type coordinates. The app measures the horizon in 720 directions around that spot, then steps through the window to find sunlight, the longest dark stretch, Earth contact, and the longest loss of contact. It also counts down to the next sunset or sunrise, and the next Earthset or Earthrise, from the selected time. With two or more pins, Compare puts them side by side.</p>
   <p><b>Score.</b> 45% sunlight share + 35% Earth-contact share + 20% gentle slope (full marks under 5°, none over 15°). Sites steeper than 15° are halved. It is a quick comparison aid, not a mission rule.</p>
   <p><b>Limits.</b> The terrain grid is 250 m per pixel, so boulders, small craters and local ridges are not seen. "Earth link" means the centre of Earth is above the terrain horizon for an antenna 2 m above ground; it is not a radio link budget. Sun and Earth positions agree with NASA SPICE (DE440) to about 0.004°. This is a research and education tool, not flight planning software.</p>
   <p class="src"><b>Data.</b> LOLA south-pole elevation model LDEM_60S_240MPP_ADJ (NASA GSFC PGDA, LRO LOLA team). Orbit and rotation model: astronomy-engine (MIT). 3D: three.js (MIT).</p>

@@ -23,7 +23,11 @@ Shadowline is an interactive 3D map of the Moon's south pole that shows where a 
 - **Heat maps:** share of a chosen window (one lunar day, three months or a year) that each spot is sunlit, has Earth above the horizon, or both together. A fourth layer shows slope.
 - **Site test:** click any point to get a 0–100 score, sunlight %, the longest dark stretch, Earth-in-view %, the longest loss of contact, slope, a 360° horizon view with the Sun and Earth paths, and a timeline you can click to jump in time.
 - **Find best sites:** scans the whole map and pins the three best-scoring, well-separated spots.
-- **Compare:** up to four sites side by side.
+- **Compare:** up to four sites in one side-by-side table, with the best value in each row marked.
+- **Countdowns:** time to the next sunset or sunrise and the next Earthset or Earthrise at each site, from the selected moment.
+- **Add a site:** type coordinates, or pick from a short list of notable south-pole sites (IM-2 target on Mons Mouton, Shackleton ridge, a Chang'e-7 candidate site, the LCROSS impact site and others; coordinates approximate).
+- **Open numbers:** each report shows how its score adds up and exports the full time series as CSV.
+- **Phone and desktop:** touch controls and layouts for both.
 
 **How it works**
 - Terrain is NASA's LOLA south-pole elevation model, 512 km across, resampled to 250 m per pixel.

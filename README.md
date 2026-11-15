@@ -14,7 +14,9 @@ Built for the NASA Space Apps Challenge 2026 (November 14–15, 2026).
 - **Heat maps.** Share of a time window each spot is sunlit, has Earth above the horizon, or both.
 - **Site test.** Click anywhere: sunlight %, longest dark stretch, Earth-in-view %, longest loss of contact, slope, a 360° horizon view, and a timeline you can click to jump in time.
 - **Find best sites.** One button scans the whole map and pins the three best-scoring spots.
-- **Compare.** Up to four pins at once.
+- **Countdowns.** Each site shows the time to the next sunset or sunrise and the next Earthset or Earthrise from the selected moment.
+- **Add a site.** Type coordinates, or pick from a short list of notable south-pole sites (approximate coordinates).
+- **Compare.** Up to four pins in one side-by-side table, with the best value in each row marked.
 - **Open numbers.** Each site report shows how its score adds up, and exports the full time series (UTC, Sun and Earth elevation and azimuth, visibility) as CSV.
 - **Phone and desktop.** Touch controls and a layout that fits an iPhone, a tablet or a wide monitor.
 
