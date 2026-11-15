@@ -110,6 +110,7 @@ uniform sampler2D uHeight, uLight, uAccum;
 uniform vec3 uSun;
 uniform float uL, uPixel, uTexel, uAccumN;
 uniform int uLayer;
+uniform vec3 uHeatMax;   // largest sunlight / Earth / both share on the map
 uniform vec3 uHover;      // xy = map uv, z = on/off
 in vec2 vUv;
 in float vH;
@@ -180,7 +181,7 @@ void main() {
   } else {
     vec4 acc = texture(uAccum, vUv);
     float nrm = max(acc.a, 1.0);
-    vec3 c = uLayer == 1 ? heat(acc.r / nrm) : (uLayer == 2 ? ice(acc.g / nrm) : mint(acc.b / nrm));
+    vec3 c = uLayer == 1 ? heat(acc.r / nrm / uHeatMax.x) : (uLayer == 2 ? ice(acc.g / nrm / uHeatMax.y) : mint(acc.b / nrm / uHeatMax.z));
     col = c * (0.42 + 0.75 * hill);
     if (uAccumN < 0.5) col = vec3(0.03) * (0.4 + hill);
   }
@@ -272,6 +273,7 @@ export class Gpu {
       uTexel: { value: 1 / n },
       uExag: { value: 3 },
       uLayer: { value: 0 },
+      uHeatMax: { value: new THREE.Vector3(1, 1, 1) },
       uAccumN: { value: 0 },
       uHover: { value: new THREE.Vector3(0, 0, 0) },
     };

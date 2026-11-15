@@ -116,7 +116,8 @@ canvas#strip { cursor: pointer; }
 #scrub { width: 100%; margin: 8px 0 0; accent-color: var(--sun); height: 18px; }
 .time-opts { display: flex; gap: 12px; flex: none; }
 .time-opts label { display: flex; flex-direction: column; font-size: 10.5px; color: var(--dim); gap: 3px; letter-spacing: .04em; }
-.time-opts select, .time-opts input { background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line); border-radius: 8px; padding: 5px 7px; font-size: 12.5px; color-scheme: dark; }
+.time-opts select, .time-opts input { background: rgba(255, 255, 255, 0.13); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 8px; padding: 5px 7px; font-size: 12.5px; color-scheme: dark; color: var(--text); opacity: 1; cursor: pointer; }
+.time-opts label { color: #c3ccd9; }
 
 /* Map labels */
 #labels { position: fixed; inset: 0; pointer-events: none; z-index: 3; overflow: hidden; }
@@ -202,6 +203,12 @@ table.cmp td.best { color: var(--good); }
 table.cmp tr.big td { font-size: 17px; }
 table.cmp td small { display: block; font-weight: 400; color: var(--dim); font-size: 10.5px; line-height: 1.3; }
 table.cmp td .on-s { color: var(--sun); } table.cmp td .on-e { color: var(--earth); } table.cmp td .off { color: var(--dim); }
+
+/* View-from-site buttons */
+.look { display: flex; gap: 8px; margin-top: 8px; }
+.look button { flex: 1; border-radius: 10px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.07); padding: 9px 8px; cursor: pointer; font-size: 12.5px; }
+.look button:first-child { flex: 1.6; }
+.look button:hover { background: rgba(255, 255, 255, 0.14); }
 
 /* Mission scenario */
 .mis-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; }

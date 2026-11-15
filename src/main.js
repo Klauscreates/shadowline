@@ -163,7 +163,8 @@ function rebuildWindow() {
   const k = Math.max(1, Math.ceil(n / 300));
   state.accumList = state.samples.filter((_, i) => i % k === 0);
   state.accumIdx = 0;
-  state.heat = null;
+  state.heat = null; state.heatMax = null;
+  gpu.terrainUniforms.uHeatMax.value.set(1, 1, 1);
   gpu.resetAccum();
   state.t = Math.min(Math.max(state.t, state.start), state.start + span * DAY - 1);
   for (const p of state.pins) p.report = analyseSite(terrain, p.x, p.y, state.samples, state.stepHours);
@@ -371,7 +372,8 @@ function scoreTable(r) {
     <tr><td>Earth contact</td><td>${pct1(r.earthPct)} × 35</td><td>${s.earth.toFixed(1)}</td></tr>
     <tr><td>Gentle slope</td><td>${s.slopeSafe.toFixed(2)} × 20</td><td>${s.slope.toFixed(1)}</td></tr>
     ${s.halved ? '<tr class="pen"><td>Steeper than 15°</td><td>total × 0.5</td><td></td></tr>' : ''}
-    <tr class="tot"><td>Score</td><td>out of 100</td><td>${r.score}</td></tr></table>`;
+    <tr class="tot"><td>Score</td><td>out of 100</td><td>${r.score}</td></tr></table>
+    <div class="note">Example weights, not a NASA standard: power counts most, then Earth contact, then safe ground. Use the separate numbers above if your mission weighs them differently.</div>`;
 }
 function siteSummary(p) {
   const r = p.report;
@@ -466,6 +468,7 @@ function renderPanel() {
     </div>
     <div class="block-title">At the selected time</div>
     <div class="now-row"><div class="now-chip sun" id="nowSun"></div><div class="now-chip earth" id="nowEarth"></div></div>
+    <div class="look"><button data-act="lookSun">View from site toward the Sun</button><button data-act="lookEarth">Toward Earth</button></div>
     <div class="step"><div class="step-h"><i>1</i><b>Power</b><span>sunlight over the window</span></div>
       <div class="metrics">
         <div class="metric sun"><div class="k">Sunlit</div><div class="v">${pct1(r.sunPct)}</div><div class="s">of the window</div></div>
@@ -495,7 +498,7 @@ function renderPanel() {
     <div class="block-title">How the score adds up</div>
     ${scoreTable(r)}
     <div class="export"><button data-act="csv">Download data (CSV)</button><button data-act="copy">Copy summary</button></div>
-    <div class="note">Window: ${new Date(state.start).toISOString().slice(0, 10)} + ${windowName()}, sampled every ${state.stepHours} h. Terrain at 250 m per pixel; antenna 2 m above ground.</div>`;
+    <div class="note">Window: ${new Date(state.start).toISOString().slice(0, 10)} + ${windowName()}, sampled every ${state.stepHours} h. Terrain: NASA LOLA 240 m data on a 250 m grid; antenna 2 m above ground.</div>`;
   updateViewOffset();
   if (panel.classList.contains('mini')) { chartCache = null; return; }
   buildCharts();
@@ -627,6 +630,7 @@ $('siteBody').addEventListener('click', (e) => {
     return;
   }
   const act = e.target.dataset?.act, pin = state.pins[state.selected];
+  if ((act === 'lookSun' || act === 'lookEarth') && pin) { lookFrom(pin, act === 'lookSun' ? 'sun' : 'earth'); return; }
   if (act === 'csv' && pin) {
     const url = URL.createObjectURL(new Blob([siteCsv(pin)], { type: 'text/csv' }));
     const a = document.createElement('a');
@@ -742,6 +746,17 @@ function updateHover() {
 
 // ---------- camera moves ----------
 let tween = null;
+/** Low third-person view across a site toward the Sun or Earth, so the horizon and long shadows are seen from near ground level. */
+function lookFrom(pin, body) {
+  const w = toWorldDir(body === 'sun' ? state.sky.sunDir : state.sky.earthDir);
+  const l = Math.hypot(w.x, w.z) || 1, back = 34;
+  const tgt = mapToWorld(pin.x, pin.y);
+  const px = tgt.x - (w.x / l) * back, pz = tgt.z - (w.z / l) * back;
+  let py = tgt.y + 3.2;
+  const mx = px * 1000, my = -pz * 1000;
+  if (terrain.inside(mx, my)) py = Math.max(py, terrain.height(mx, my) * EXAG / 1000 + 1.6);
+  flyCamera(new THREE.Vector3(px, py, pz), tgt, 1500);
+}
 function flyCamera(toPos, toTarget, ms = 1600) {
   tween = { p0: camera.position.clone(), t0: controls.target.clone(), p1: toPos, t1: toTarget, start: performance.now(), ms };
 }
@@ -799,13 +814,13 @@ const LEGENDS = {
   1: ['Share of the window in sunlight', 'linear-gradient(90deg,#08081f,#5c126e,#db404c,#fca633,#fffab8)', '0%', '100%'],
   2: ['Share of the window with Earth above the horizon', 'linear-gradient(90deg,#050812,#0f3385,#339ef2,#e0faff)', '0%', '100%'],
   3: ['Share of the window with sunlight and Earth together', 'linear-gradient(90deg,#050d0f,#0a6161,#59e0a1,#f2ffe0)', '0%', '100%'],
-  4: ['Ground slope over 250 m', 'linear-gradient(90deg,#4ddb99 0%,#4ddb99 12%,#fad652 25%,#fa8038 37%,#b31f2e 62%,#290a14 100%)', '0°', '40°'],
+  4: ['Ground slope over a 500 m baseline', 'linear-gradient(90deg,#4ddb99 0%,#4ddb99 12%,#fad652 25%,#fa8038 37%,#b31f2e 62%,#290a14 100%)', '0°', '40°'],
 };
 function updateLegend() {
   const L = LEGENDS[state.layer];
   $('legend').hidden = !L;
   if (!L) return;
-  $('legendTitle').textContent = L[0]; $('legendBar').style.background = L[1]; $('legendLo').textContent = L[2]; $('legendHi').textContent = L[3];
+  $('legendTitle').textContent = L[0]; $('legendBar').style.background = L[1]; $('legendLo').textContent = L[2]; $('legendHi').textContent = state.layer < 4 && state.heatMax ? pct(state.heatMax[state.layer - 1]) + ' (best on map)' : L[3];
   const done = state.accumIdx >= state.accumList.length;
   $('legendProgress').textContent = state.layer < 4 && !done ? `Adding up the window… ${Math.round(state.accumIdx / state.accumList.length * 100)}%` : '';
 }
@@ -899,7 +914,7 @@ const timebarEl = $('timebar');
 const syncTimebar = () => document.documentElement.style.setProperty('--tbh', timebarEl.offsetHeight + 'px');
 new ResizeObserver(() => { syncTimebar(); updateViewOffset(); }).observe(timebarEl);
 syncTimebar();
-if (coarse) $('hint').textContent = 'Tap the surface to test a landing site';
+if (coarse) $('hint').textContent = 'Three sites are loaded. Tap the surface to test your own.';
 addEventListener('resize', () => { resize(); if (state.pins.length) renderPanel(); });
 
 let last = performance.now(), slow = 0, frames = 0;
@@ -915,6 +930,12 @@ function frame(now) {
     state.lightDirty = true;
     if (state.accumIdx >= state.accumList.length) {
       state.heat = gpu.readAccum();
+      // stretch each heat map to the best value actually present, so the top areas stand out
+      const hd = state.heat.data, mxs = [1, 1, 1];
+      for (let i = 0; i < hd.length; i += 4) { if (hd[i] > mxs[0]) mxs[0] = hd[i]; if (hd[i + 1] > mxs[1]) mxs[1] = hd[i + 1]; if (hd[i + 2] > mxs[2]) mxs[2] = hd[i + 2]; }
+      state.heatMax = mxs.map((v) => Math.max(v / 255, 0.05));
+      gpu.terrainUniforms.uHeatMax.value.set(state.heatMax[0], state.heatMax[1], state.heatMax[2]);
+      updateLegend();
       if (state.wantBest) { state.wantBest = false; findBest(); }
     }
     if (state.layer) updateLegend();
@@ -957,6 +978,11 @@ async function boot() {
   state.sky = sampleAt(state.t);
   rebuildWindow();
   setTime(state.t);
+  for (const i of [0, 1, 3]) { const s = PRESETS[i], [sx, sy] = latLonToMap(s[2], s[3]); addPin(sx, sy, false, s[0]); }
+  state.selected = 0;
+  if (innerWidth < 900) { $('panel').classList.add('mini'); $('panelToggle').textContent = '▴'; }
+  else $('hint').classList.remove('gone');
+  renderPanel();
   requestAnimationFrame(frame);
   $('loadText').textContent = 'Ready';
   setTimeout(() => {
