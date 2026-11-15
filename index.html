@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#04060b">
-<meta name="build" content="22">
+<meta name="build" content="23">
 <meta name="author" content="Nikolai Klaus Stoloff">
 <meta name="ai-disclosure" content="Code written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by the author. No data, images or audio are AI-generated.">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Shadowline — Lunar Landing Site Navigator</title>
 <meta name="description" content="Fly over the Moon's south pole, watch real sunlight sweep across it, and click anywhere to test a landing site for power and Earth contact.">
-<link rel="stylesheet" href="src/style.css?v=22">
+<link rel="stylesheet" href="src/style.css?v=23">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js" } }
 </script>
@@ -54,6 +54,7 @@
   <button id="clearPins" hidden>Clear pins</button>
 </div>
 
+<button id="scaleBtn" aria-pressed="false" title="Heights are drawn 3× taller than real so craters read clearly. Click for true scale."><b>Heights ×3</b><span>exaggerated</span></button>
 <button id="aboutBtn" aria-label="How it works" title="How it works">?</button>
 
 <aside id="panel" hidden>
@@ -110,7 +111,7 @@
 
 <dialog id="about" class="modal">
   <h2>How Shadowline works</h2>
-  <p><b>What you see.</b> A 512 km wide map of the Moon's south pole built from NASA's Lunar Orbiter Laser Altimeter elevation data. Heights are stretched 3× so craters read clearly.</p>
+  <p><b>What you see.</b> A 512 km wide map of the Moon's south pole built from NASA's Lunar Orbiter Laser Altimeter elevation data. Heights are drawn 3× taller than real by default so craters read clearly; the "Heights ×3 / True scale" button at the top switches the picture to true scale (1 : 1). That switch changes only the drawing: every sunlight, Earth-contact and slope number is always worked out from the true heights.</p>
   <p><b>Live light.</b> For the chosen moment, the app works out where the Sun and Earth sit in the Moon's sky and traces a ray from every point of the map towards them. If terrain blocks the ray, that point is in shadow. The Moon's curve is included. The Sun is treated as a disk, so shadow edges are soft.</p>
   <p><b>Heat maps.</b> The same test is repeated across the whole time window and added up: share of time in sunlight, share of time Earth is above the horizon, and both together.</p>
   <p><b>Site test.</b> Click the map, pick a named site, or type coordinates. The app measures the horizon in 720 directions around that spot, then steps through the window to find sunlight, the longest dark stretch, Earth contact, and the longest loss of contact. It also counts down to the next sunset or sunrise, and the next Earthset or Earthrise, from the selected time. With two or more pins, Compare puts them side by side.</p>
@@ -139,6 +140,6 @@ setTimeout(function () {
   if (i && !i.classList.contains('gone') && t && t.textContent === 'Loading NASA terrain…') t.textContent = 'Still loading… if this does not change, please reload the page.';
 }, 12000);
 </script>
-<script type="module" src="src/main.js?v=22" onerror="window.__startFail('a file did not load')"></script>
+<script type="module" src="src/main.js?v=23" onerror="window.__startFail('a file did not load')"></script>
 </body>
 </html>

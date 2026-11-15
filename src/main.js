@@ -1,12 +1,12 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
-import { moonSky } from './ephemeris.js?v=22';
-import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N, FineTerrain, FINE_RADIUS_M } from './terrain.js?v=22';
-import { Gpu } from './gpu.js?v=22';
+import { moonSky } from './ephemeris.js?v=23';
+import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N, FineTerrain, FINE_RADIUS_M } from './terrain.js?v=23';
+import { Gpu } from './gpu.js?v=23';
 
 // If the browser kept an older copy of the page next to this newer script, reload once to get a matching set.
-const BUILD = '22';
+const BUILD = '23';
 if (document.querySelector('meta[name="build"]')?.content !== BUILD) {
   if (!/[?&]fresh=/.test(location.search)) location.replace(location.pathname + '?fresh=' + Date.now());
   throw new Error('This page is out of date. Please reload.');
@@ -15,7 +15,8 @@ if (document.querySelector('meta[name="build"]')?.content !== BUILD) {
 const $ = (id) => document.getElementById(id);
 const DEG = Math.PI / 180;
 const DAY = 86400000;
-const EXAG = 3;
+const EXAG_VIEW = 3;      // default display stretch of heights; 1 = true scale
+let EXAG = EXAG_VIEW;     // display only: every sunlight / Earth / slope number uses true heights
 const PIN_COLORS = ['#ffc65a', '#5db4ff', '#58e0a0', '#ff8fb1'];
 const FEATURES = [
   ['South Pole', -90, 0, 'pole'],
@@ -202,24 +203,29 @@ async function refinePin(pin) {
     renderPanel();
   } catch (e) { console.warn('fine terrain not used for site ' + pin.letter, e); }
 }
+/** Put a pin's marker on the drawn surface (depends on the vertical scale in use). */
+function placePin(pin) {
+  const base = mapToWorld(pin.x, pin.y);
+  pin.beam.position.set(base.x, base.y + 23, base.z);
+  pin.ring.position.set(base.x, base.y + 0.4, base.z);
+  pin.top.set(base.x, base.y + 46, base.z);
+}
 function addPin(x, y, select = true, name = null) {
   if (state.pins.length >= PIN_COLORS.length) removePin(0);
   const used = new Set(state.pins.map((p) => p.color));
   const color = PIN_COLORS.find((c) => !used.has(c));
   const letter = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[state.nextLetter++ % 26];
-  const base = mapToWorld(x, y);
   const group = new THREE.Group();
   const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 46, 8), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 }));
-  beam.position.set(base.x, base.y + 23, base.z);
   const ring = new THREE.Mesh(new THREE.RingGeometry(2.6, 3.4, 48), new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.95, depthTest: false }));
   ring.rotation.x = -Math.PI / 2;
-  ring.position.set(base.x, base.y + 0.4, base.z);
   group.add(beam, ring);
   scene.add(group);
-  const top = new THREE.Vector3(base.x, base.y + 46, base.z);
+  const top = new THREE.Vector3();
   const label = addLabel(letter, 'pin', () => top);
   label.el.style.background = color; label.el.style.color = '#0a0d14';
-  const pin = { x, y, color, letter, name, group, ring, label, near: nearestFeature(x, y), report: analyseSite(terrain, x, y, state.samples, state.stepHours) };
+  const pin = { x, y, color, letter, name, group, beam, ring, top, label, near: nearestFeature(x, y), report: analyseSite(terrain, x, y, state.samples, state.stepHours) };
+  placePin(pin);
   state.pins.push(pin);
   refinePin(pin);
   if (select || state.selected < 0) state.selected = state.pins.length - 1;
@@ -764,6 +770,29 @@ function updateHover() {
   el.style.top = (hoverXY.y + 16) + 'px';
 }
 
+// ---------- vertical scale: 3x stretched (default) or true scale ----------
+const featureLabels = [];
+function setExag(v) {
+  if (!terrain || v === EXAG) return;
+  const groundY = () => terrain.height(controls.target.x * 1000, -controls.target.z * 1000) * EXAG / 1000;
+  const before = groundY();
+  EXAG = v;
+  gpu.terrainUniforms.uExag.value = v;
+  // keep the camera the same distance above the ground it is looking at
+  const dy = groundY() - before;
+  tween = null; controls.enabled = true;
+  controls.target.y += dy; camera.position.y += dy;
+  for (const fl of featureLabels) fl.pos.copy(mapToWorld(fl.x, fl.y, fl.lift));
+  for (const p of state.pins) placePin(p);
+  const b = $('scaleBtn'), real = v === 1;
+  b.classList.toggle('true', real);
+  b.setAttribute('aria-pressed', String(real));
+  b.querySelector('b').textContent = real ? 'True scale' : 'Heights ×' + EXAG_VIEW;
+  b.querySelector('span').textContent = real ? '1 : 1' : 'exaggerated';
+  b.title = real ? 'Heights are drawn at true scale. Click to stretch them ' + EXAG_VIEW + '× again.' : 'Heights are drawn ' + EXAG_VIEW + '× taller than real so craters read clearly. Click for true scale.';
+}
+$('scaleBtn').addEventListener('click', () => setExag(EXAG === 1 ? EXAG_VIEW : 1));
+
 // ---------- camera moves ----------
 let tween = null;
 /** Low third-person view across a site toward the Sun or Earth, so the horizon and long shadows are seen from near ground level. */
@@ -990,8 +1019,9 @@ async function boot() {
 
   for (const f of FEATURES) {
     const [x, y] = latLonToMap(f[1], f[2]);
-    const pos = mapToWorld(x, y, f[3] ? 9 : 5);
-    addLabel(f[0], f[3] || '', () => pos);
+    const fl = { x, y, lift: f[3] ? 9 : 5, pos: mapToWorld(x, y, f[3] ? 9 : 5) };
+    featureLabels.push(fl);
+    addLabel(f[0], f[3] || '', () => fl.pos);
   }
   addLabel('SUN', 'sky sun', () => sunSprite.position);
   addLabel('EARTH', 'sky earth', () => earthMesh.position);
@@ -1010,7 +1040,7 @@ async function boot() {
     $('intro').classList.add('gone');
     flyCamera(new THREE.Vector3(-170, 210, 330), new THREE.Vector3(0, 0, 0), 3600);
   }, 500);
-  window.__shadowline = { state, terrain, gpu, addPin, camera, controls, pick };
+  window.__shadowline = { state, terrain, gpu, addPin, camera, controls, pick, setExag, get exag() { return EXAG; } };
 }
 boot().catch((err) => {
   console.error(err);
