@@ -1,0 +1,4 @@
+tools/raw/
+.claude/
+node_modules/
+__pycache__/

@@ -1,0 +1,14 @@
+{
+  "size": 2048,
+  "half_extent_m": 255960.0,
+  "pixel_m": 249.9609375,
+  "unit_m": 0.5,
+  "radius_m": 1737400.0,
+  "min_m": -6672.5,
+  "max_m": 7020.0,
+  "projection": "south polar stereographic, true scale at pole; +y toward lon 0, +x toward lon 90E",
+  "row_order": "row 0 = minimum y",
+  "source": "https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEM_60S_240MPP_ADJ.TIF",
+  "source_sha256": "3f9663257b63022f2b0d5a623482ff3cadddceb91594a4e4ca14a94d8cec8b34",
+  "sha256": "fe8709846fdcb5b07b3a20f1ac4258abad9c397b0f86c94b87c2e17dd914322b"
+}

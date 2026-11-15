@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shadowline — Lunar Landing Site Navigator</title>
+<meta name="description" content="Fly over the Moon's south pole, watch real sunlight sweep across it, and click anywhere to test a landing site for power and Earth contact.">
+<link rel="stylesheet" href="src/style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="scene" aria-label="3D view of the lunar south pole"></canvas>
+<div id="labels" aria-hidden="true"></div>
+
+<div id="intro">
+  <div class="intro-inner">
+    <div class="intro-mark">SHADOWLINE</div>
+    <div class="intro-sub">Where on the Moon's south pole can you land, stay powered, and still call home?</div>
+    <div class="intro-load" id="loadText">Loading NASA terrain…</div>
+  </div>
+</div>
+
+<header id="brand">
+  <div class="mark">SHADOWLINE</div>
+  <div class="tag">Lunar south pole · landing site navigator</div>
+</header>
+
+<nav id="layers" role="tablist" aria-label="Map layer">
+  <button data-layer="0" class="on" title="Real sunlight and shadows at the selected moment">Live light</button>
+  <button data-layer="1" title="Share of the time window each spot is sunlit">Sunlight</button>
+  <button data-layer="2" title="Share of the time window Earth is above the horizon">Earth link</button>
+  <button data-layer="3" title="Share of the time with sunlight and Earth contact together">Power + link</button>
+  <button data-layer="4" title="Ground slope">Slope</button>
+</nav>
+
+<div id="legend" hidden>
+  <div class="legend-title" id="legendTitle"></div>
+  <div class="legend-bar" id="legendBar"></div>
+  <div class="legend-ticks"><span id="legendLo">0%</span><span id="legendHi">100%</span></div>
+  <div class="legend-progress" id="legendProgress"></div>
+</div>
+
+<div id="actions">
+  <button id="findBest" class="primary">✦ Find best sites</button>
+  <button id="clearPins" hidden>Clear pins</button>
+  <button id="aboutBtn">How it works</button>
+</div>
+
+<aside id="panel" hidden>
+  <div id="pinTabs"></div>
+  <div id="siteBody"></div>
+</aside>
+
+<div id="hint">Click anywhere on the surface to test a landing site</div>
+<div id="hover" hidden></div>
+
+<footer id="timebar">
+  <button id="play" aria-label="Play or pause">❚❚</button>
+  <div class="time-main">
+    <div class="time-row">
+      <div id="clock">—</div>
+      <div class="sky-read" id="skyRead"></div>
+    </div>
+    <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Time within the window">
+  </div>
+  <div class="time-opts">
+    <label>Start <input id="startDate" type="date"></label>
+    <label>Window
+      <select id="span">
+        <option value="29.53">1 lunar day (29.5 d)</option>
+        <option value="90">3 months</option>
+        <option value="365">1 year</option>
+      </select>
+    </label>
+    <label>Speed
+      <select id="speed">
+        <option value="0.25">6 h / s</option>
+        <option value="1" selected>1 day / s</option>
+        <option value="4">4 days / s</option>
+      </select>
+    </label>
+  </div>
+</footer>
+
+<dialog id="about">
+  <h2>How Shadowline works</h2>
+  <p><b>What you see.</b> A 512 km wide map of the Moon's south pole built from NASA's Lunar Orbiter Laser Altimeter elevation data. Heights are stretched 3× so craters read clearly.</p>
+  <p><b>Live light.</b> For the chosen moment, the app works out where the Sun and Earth sit in the Moon's sky and traces a ray from every point of the map towards them. If terrain blocks the ray, that point is in shadow. The Moon's curve is included. The Sun is treated as a disk, so shadow edges are soft.</p>
+  <p><b>Heat maps.</b> The same test is repeated across the whole time window and added up: share of time in sunlight, share of time Earth is above the horizon, and both together.</p>
+  <p><b>Site test.</b> A click measures the horizon in 720 directions around that spot, then steps through the window to find sunlight, the longest dark stretch, Earth contact, and the longest loss of contact.</p>
+  <p><b>Score.</b> 45% sunlight share + 35% Earth-contact share + 20% gentle slope (full marks under 5°, none over 15°). Sites steeper than 15° are halved. It is a quick comparison aid, not a mission rule.</p>
+  <p><b>Limits.</b> The terrain grid is 250 m per pixel, so boulders, small craters and local ridges are not seen. "Earth link" means the centre of Earth is above the terrain horizon for an antenna 2 m above ground; it is not a radio link budget. Sun and Earth positions agree with NASA SPICE (DE440) to about 0.004°. This is a research and education tool, not flight planning software.</p>
+  <p class="src"><b>Data.</b> LOLA south-pole elevation model LDEM_60S_240MPP_ADJ (NASA GSFC PGDA, LRO LOLA team). Orbit and rotation model: astronomy-engine (MIT). 3D: three.js (MIT).</p>
+  <form method="dialog"><button class="primary">Close</button></form>
+</dialog>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
