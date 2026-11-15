@@ -1,7 +1,7 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 // CPU side of the terrain: loading, map <-> sphere maths, height sampling,
 // horizon profiles and per-site time series.
-import { SUN_RADIUS_RAD } from './ephemeris.js?v=24';
+import { SUN_RADIUS_RAD } from './ephemeris.js?v=27';
 
 export const R = 1737400;          // lunar reference radius, m
 const DEG = Math.PI / 180;
