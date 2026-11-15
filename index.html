@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04060b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Shadowline — Lunar Landing Site Navigator</title>
 <meta name="description" content="Fly over the Moon's south pole, watch real sunlight sweep across it, and click anywhere to test a landing site for power and Earth contact.">
 <link rel="stylesheet" href="src/style.css">
@@ -28,11 +31,11 @@
 </header>
 
 <nav id="layers" role="tablist" aria-label="Map layer">
-  <button data-layer="0" class="on" title="Real sunlight and shadows at the selected moment">Live light</button>
-  <button data-layer="1" title="Share of the time window each spot is sunlit">Sunlight</button>
-  <button data-layer="2" title="Share of the time window Earth is above the horizon">Earth link</button>
-  <button data-layer="3" title="Share of the time with sunlight and Earth contact together">Power + link</button>
-  <button data-layer="4" title="Ground slope">Slope</button>
+  <button data-layer="0" class="on" title="Real sunlight and shadows at the selected moment" data-short="Live"><span>Live light</span></button>
+  <button data-layer="1" title="Share of the time window each spot is sunlit" data-short="Sun"><span>Sunlight</span></button>
+  <button data-layer="2" title="Share of the time window Earth is above the horizon" data-short="Earth"><span>Earth link</span></button>
+  <button data-layer="3" title="Share of the time with sunlight and Earth contact together" data-short="Both"><span>Power + link</span></button>
+  <button data-layer="4" title="Ground slope" data-short="Slope"><span>Slope</span></button>
 </nav>
 
 <div id="legend" hidden>
@@ -49,6 +52,7 @@
 </div>
 
 <aside id="panel" hidden>
+  <button id="panelToggle" aria-label="Collapse or expand the site report" title="Collapse / expand">▾</button>
   <div id="pinTabs"></div>
   <div id="siteBody"></div>
 </aside>

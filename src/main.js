@@ -205,6 +205,64 @@ const fmtDur = (h) => (h >= 48 ? (h / 24).toFixed(1) + ' d' : Math.round(h) + ' 
 const fmtLat = (v) => Math.abs(v).toFixed(2) + '°' + (v < 0 ? 'S' : 'N');
 const fmtLon = (v) => Math.abs(v).toFixed(1) + '°' + (v < 0 ? 'W' : 'E');
 const pct = (v) => Math.round(v * 100) + '%';
+const pct1 = (v) => (v * 100).toFixed(v > 0.9995 || v < 0.0005 ? 0 : 1) + '%';
+const coarse = matchMedia('(pointer: coarse)').matches;
+const dayLabel = (ms) => { const d = new Date(ms); return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate(); };
+const windowName = () => (state.spanDays >= 100 ? '1 year' : state.spanDays > 31 ? '3 months' : '29.53 days');
+
+function scoreParts(r) {
+  const slopeSafe = Math.min(Math.max((15 - r.slope) / 10, 0), 1);
+  return { sun: 45 * r.sunPct, earth: 35 * r.earthPct, slope: 20 * slopeSafe, slopeSafe, halved: r.slope > 15 };
+}
+function scoreTable(r) {
+  const s = scoreParts(r);
+  return `<table class="sum">
+    <tr><td>Sunlight</td><td>${pct1(r.sunPct)} × 45</td><td>${s.sun.toFixed(1)}</td></tr>
+    <tr><td>Earth contact</td><td>${pct1(r.earthPct)} × 35</td><td>${s.earth.toFixed(1)}</td></tr>
+    <tr><td>Gentle slope</td><td>${s.slopeSafe.toFixed(2)} × 20</td><td>${s.slope.toFixed(1)}</td></tr>
+    ${s.halved ? '<tr class="pen"><td>Steeper than 15°</td><td>total × 0.5</td><td></td></tr>' : ''}
+    <tr class="tot"><td>Score</td><td>out of 100</td><td>${r.score}</td></tr></table>`;
+}
+function siteSummary(p) {
+  const r = p.report;
+  return [
+    `Shadowline site ${p.letter}${p.near ? ' (near ' + p.near + ')' : ''}`,
+    `Latitude ${r.lat.toFixed(4)} deg, longitude ${r.lon.toFixed(4)} deg E, elevation ${Math.round(r.elevation)} m`,
+    `Window: ${new Date(state.start).toISOString().slice(0, 10)} UTC + ${windowName()}, step ${state.stepHours} h`,
+    `Sunlit ${pct1(r.sunPct)} of window, longest dark stretch ${fmtDur(r.longestDarkH)}`,
+    `Earth in view ${pct1(r.earthPct)} of window, longest loss of contact ${fmtDur(r.longestMuteH)}`,
+    `Sunlight and Earth contact together ${pct1(r.bothPct)}`,
+    `Slope ${r.slope.toFixed(1)} deg (500 m baseline)`,
+    `Score ${r.score}/100 (45% sunlight, 35% Earth contact, 20% slope)`,
+    `Terrain: LOLA LDEM_60S_240MPP_ADJ resampled to 250 m; observer 2 m above ground`,
+  ].join('\n');
+}
+function siteCsv(p) {
+  const r = p.report, S = r.series, deg = (v) => (v / DEG);
+  const az = (v) => ((deg(v) % 360) + 360) % 360;
+  const L = [
+    '# Shadowline site time series',
+    `# site,${p.letter}`,
+    `# latitude_deg,${r.lat.toFixed(5)}`,
+    `# longitude_deg_east,${r.lon.toFixed(5)}`,
+    `# elevation_m,${r.elevation.toFixed(1)}`,
+    `# slope_deg,${r.slope.toFixed(2)}`,
+    `# sunlit_fraction,${r.sunPct.toFixed(4)}`,
+    `# earth_visible_fraction,${r.earthPct.toFixed(4)}`,
+    `# both_fraction,${r.bothPct.toFixed(4)}`,
+    `# score,${r.score}`,
+    `# step_hours,${state.stepHours}`,
+    '# terrain,LOLA LDEM_60S_240MPP_ADJ resampled to 250 m per pixel',
+    '# observer_height_m,2',
+    '# notes,elevations are of the body centre above the local horizontal; azimuth is clockwise from north; sun_visible_fraction is the share of the solar disk diameter above the terrain horizon',
+    'utc,sun_visible_fraction,sun_elevation_deg,sun_azimuth_deg,earth_visible,earth_elevation_deg,earth_azimuth_deg',
+  ];
+  for (let i = 0; i < S.sun.length; i++) {
+    L.push([new Date(state.samples[i].t).toISOString().slice(0, 19) + 'Z', S.sun[i].toFixed(3), deg(S.sunEl[i]).toFixed(3), az(S.sunAz[i]).toFixed(2),
+      S.earth[i], deg(S.earthEl[i]).toFixed(3), az(S.earthAz[i]).toFixed(2)].join(','));
+  }
+  return L.join('\n') + '\n';
+}
 
 function verdict(r) {
   const weak = [];
@@ -223,7 +281,7 @@ let chartCache = null;   // { horizonBg, stripBg, range }
 function renderPanel() {
   const panel = $('panel');
   $('clearPins').hidden = !state.pins.length;
-  if (!state.pins.length) { panel.hidden = true; chartCache = null; return; }
+  if (!state.pins.length) { panel.hidden = true; chartCache = null; updateViewOffset(); return; }
   panel.hidden = false;
   $('pinTabs').innerHTML = state.pins.map((p, i) =>
     `<button class="pin-tab ${i === state.selected ? 'on' : ''}" data-i="${i}">
@@ -242,22 +300,43 @@ function renderPanel() {
       </div>
       <div>
         <div class="site-name">Site ${p.letter}${p.near ? ' · near ' + p.near : ''}</div>
-        <div class="site-coord">${fmtLat(r.lat)} · ${fmtLon(r.lon)} · ${Math.round(r.elevation).toLocaleString()} m</div>
+        <div class="site-coord">${Math.abs(r.lat).toFixed(3)}°${r.lat < 0 ? 'S' : 'N'} · ${Math.abs(r.lon).toFixed(2)}°${r.lon < 0 ? 'W' : 'E'}</div>
         <div class="verdict">${verdict(r)}</div>
       </div>
     </div>
-    <div class="metrics">
-      <div class="metric sun"><div class="k">Sunlight</div><div class="v">${pct(r.sunPct)}</div><div class="s">longest dark ${fmtDur(r.longestDarkH)}</div></div>
-      <div class="metric earth"><div class="k">Earth in view</div><div class="v">${pct(r.earthPct)}</div><div class="s">longest gap ${fmtDur(r.longestMuteH)}</div></div>
-      <div class="metric"><div class="k">Power + link together</div><div class="v">${pct(r.bothPct)}</div><div class="s">of the window</div></div>
-      <div class="metric"><div class="k">Slope</div><div class="v" style="color:${r.slope > 15 ? 'var(--bad)' : r.slope > 10 ? 'var(--sun)' : 'var(--good)'}">${r.slope.toFixed(1)}°</div><div class="s">over 250 m</div></div>
-    </div>
+    <div class="block-title">At the selected time</div>
     <div class="now-row"><div class="now-chip sun" id="nowSun"></div><div class="now-chip earth" id="nowEarth"></div></div>
-    <div class="block-title">Window timeline <span>click to jump</span></div>
+    <div class="step"><div class="step-h"><i>1</i><b>Power</b><span>sunlight over the window</span></div>
+      <div class="metrics">
+        <div class="metric sun"><div class="k">Sunlit</div><div class="v">${pct1(r.sunPct)}</div><div class="s">of the window</div></div>
+        <div class="metric"><div class="k">Longest dark stretch</div><div class="v">${fmtDur(r.longestDarkH)}</div><div class="s">Sun behind terrain</div></div>
+      </div></div>
+    <div class="step"><div class="step-h"><i>2</i><b>Communications</b><span>direct line to Earth</span></div>
+      <div class="metrics">
+        <div class="metric earth"><div class="k">Earth in view</div><div class="v">${pct1(r.earthPct)}</div><div class="s">of the window</div></div>
+        <div class="metric"><div class="k">Longest loss of contact</div><div class="v">${fmtDur(r.longestMuteH)}</div><div class="s">Earth behind terrain</div></div>
+      </div></div>
+    <div class="step"><div class="step-h"><i>3</i><b>Ground</b><span>is it safe to set down</span></div>
+      <div class="metrics">
+        <div class="metric"><div class="k">Slope</div><div class="v" style="color:${r.slope > 15 ? 'var(--bad)' : r.slope > 10 ? 'var(--sun)' : 'var(--good)'}">${r.slope.toFixed(1)}°</div><div class="s">over a 500 m baseline</div></div>
+        <div class="metric"><div class="k">Elevation</div><div class="v">${Math.round(r.elevation).toLocaleString()} m</div><div class="s">vs 1,737.4 km sphere</div></div>
+      </div></div>
+    <div class="step"><div class="step-h"><i>4</i><b>Both at once</b><span>powered and in contact</span></div>
+      <div class="metrics one">
+        <div class="metric"><div class="k">Sunlight and Earth contact together</div><div class="v">${pct1(r.bothPct)}</div><div class="s">of the window</div></div>
+      </div></div>
+    <div class="block-title">Window timeline <span>${coarse ? 'tap' : 'click'} to jump</span></div>
     <canvas class="chart" id="strip" height="58"></canvas>
-    <div class="block-title">Sky from this site <span>horizon, Sun and Earth paths</span></div>
+    <div class="axis"><span>${dayLabel(state.start)}</span><span>${dayLabel(state.start + state.spanDays * DAY / 2)}</span><span>${dayLabel(state.start + state.spanDays * DAY)}</span></div>
+    <div class="block-title">Sky from this site <span>looking north, full circle</span></div>
     <canvas class="chart" id="horizon" height="150"></canvas>
-    <div class="note">Window: ${new Date(state.start).toISOString().slice(0, 10)} + ${state.spanDays >= 100 ? '1 year' : state.spanDays > 31 ? '3 months' : '29.5 days'}, sampled every ${state.stepHours} h. Terrain at 250 m per pixel; antenna 2 m above ground.</div>`;
+    <div class="key"><span><i style="background:var(--sun)"></i>Sun path</span><span><i style="background:var(--earth)"></i>Earth path</span><span><i style="background:#7c8490"></i>Terrain horizon</span><span class="dimkey">faint = hidden</span></div>
+    <div class="block-title">How the score adds up</div>
+    ${scoreTable(r)}
+    <div class="export"><button data-act="csv">Download data (CSV)</button><button data-act="copy">Copy summary</button></div>
+    <div class="note">Window: ${new Date(state.start).toISOString().slice(0, 10)} + ${windowName()}, sampled every ${state.stepHours} h. Terrain at 250 m per pixel; antenna 2 m above ground.</div>`;
+  updateViewOffset();
+  if (panel.classList.contains('mini')) { chartCache = null; return; }
   buildCharts();
   drawCharts();
 }
@@ -364,12 +443,43 @@ $('pinTabs').addEventListener('click', (e) => {
   if (b) { state.selected = +b.dataset.i; renderPanel(); flyTo(state.pins[state.selected]); }
 });
 $('siteBody').addEventListener('click', (e) => {
+  const act = e.target.dataset?.act, pin = state.pins[state.selected];
+  if (act === 'csv' && pin) {
+    const url = URL.createObjectURL(new Blob([siteCsv(pin)], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `shadowline-site-${pin.letter}-${new Date(state.start).toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+    return;
+  }
+  if (act === 'copy' && pin) {
+    const btn = e.target, done = (ok) => { btn.textContent = ok ? 'Copied' : 'Copy failed'; setTimeout(() => { btn.textContent = 'Copy summary'; }, 1600); };
+    (navigator.clipboard ? navigator.clipboard.writeText(siteSummary(pin)) : Promise.reject()).then(() => done(true), () => done(false));
+    return;
+  }
   if (e.target.id !== 'strip' || !chartCache) return;
   const rect = e.target.getBoundingClientRect();
   const f = Math.min(Math.max((e.clientX - rect.left - chartCache.x0) / chartCache.ww, 0), 0.9999);
   setTime(state.start + f * state.spanDays * DAY);
 });
 $('clearPins').addEventListener('click', () => { while (state.pins.length) removePin(0); });
+$('panelToggle').addEventListener('click', () => {
+  const mini = $('panel').classList.toggle('mini');
+  $('panelToggle').textContent = mini ? '▴' : '▾';
+  if (!mini) renderPanel();
+  updateViewOffset();
+});
+
+// Keep the map centred in the part of the screen the report does not cover.
+function updateViewOffset() {
+  const w = innerWidth, h = innerHeight, panel = $('panel');
+  let ox = 0, oy = 0;
+  if (!panel.hidden) {
+    const r = panel.getBoundingClientRect();
+    if (r.width > w * 0.7) oy = Math.max(0, Math.round(h / 2 - (84 + r.top) / 2));
+    else ox = Math.max(0, Math.round(w / 2 - r.left / 2));
+  }
+  if (ox || oy) camera.setViewOffset(w, h, ox, oy, w, h); else camera.clearViewOffset();
+}
 
 // ---------- picking ----------
 const raycaster = new THREE.Raycaster();
@@ -397,17 +507,27 @@ function pick(cx, cy) {
 }
 
 let down = null, hoverXY = null;
-canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+const activePtrs = new Set();
+canvas.addEventListener('pointerdown', (e) => {
+  activePtrs.add(e.pointerId);
+  // a second finger means pinch / pan, never a tap
+  down = activePtrs.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
+  if (e.pointerType !== 'mouse') hoverXY = null;
+});
 canvas.addEventListener('pointerup', (e) => {
-  if (!down || !terrain) return;
-  const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
-  if (moved < 6 && performance.now() - down.t < 600) {
-    const hit = pick(e.clientX, e.clientY);
-    if (hit) addPin(hit.x, hit.y);
+  activePtrs.delete(e.pointerId);
+  if (down && terrain) {
+    const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+    const tol = e.pointerType === 'mouse' ? 6 : 12;
+    if (moved < tol && performance.now() - down.t < 600) {
+      const hit = pick(e.clientX, e.clientY);
+      if (hit) addPin(hit.x, hit.y);
+    }
   }
   down = null;
 });
-canvas.addEventListener('pointermove', (e) => { hoverXY = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('pointercancel', (e) => { activePtrs.delete(e.pointerId); down = null; });
+canvas.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') hoverXY = { x: e.clientX, y: e.clientY }; });
 canvas.addEventListener('pointerleave', () => { hoverXY = null; });
 
 function updateHover() {
@@ -552,7 +672,13 @@ function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
+  updateViewOffset();
 }
+const timebarEl = $('timebar');
+const syncTimebar = () => document.documentElement.style.setProperty('--tbh', timebarEl.offsetHeight + 'px');
+new ResizeObserver(() => { syncTimebar(); updateViewOffset(); }).observe(timebarEl);
+syncTimebar();
+if (coarse) $('hint').textContent = 'Tap the surface to test a landing site';
 addEventListener('resize', () => { resize(); if (state.pins.length) renderPanel(); });
 
 let last = performance.now(), slow = 0, frames = 0;

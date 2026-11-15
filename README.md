@@ -15,6 +15,8 @@ Built for the NASA Space Apps Challenge 2026 (November 14–15, 2026).
 - **Site test.** Click anywhere: sunlight %, longest dark stretch, Earth-in-view %, longest loss of contact, slope, a 360° horizon view, and a timeline you can click to jump in time.
 - **Find best sites.** One button scans the whole map and pins the three best-scoring spots.
 - **Compare.** Up to four pins at once.
+- **Open numbers.** Each site report shows how its score adds up, and exports the full time series (UTC, Sun and Earth elevation and azimuth, visibility) as CSV.
+- **Phone and desktop.** Touch controls and a layout that fits an iPhone, a tablet or a wide monitor.
 
 ## Run it
 
