@@ -1,12 +1,12 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
-import { moonSky } from './ephemeris.js?v=21';
-import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N } from './terrain.js?v=21';
-import { Gpu } from './gpu.js?v=21';
+import { moonSky, loadHorizons, horizonsRange } from './ephemeris.js?v=23';
+import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N } from './terrain.js?v=23';
+import { Gpu } from './gpu.js?v=23';
 
 // If the browser kept an older copy of the page next to this newer script, reload once to get a matching set.
-const BUILD = '21';
+const BUILD = '23';
 if (document.querySelector('meta[name="build"]')?.content !== BUILD) {
   if (!/[?&]fresh=/.test(location.search)) location.replace(location.pathname + '?fresh=' + Date.now());
   throw new Error('This page is out of date. Please reload.');
@@ -145,7 +145,7 @@ state.t = state.start;
 
 function sampleAt(ms) {
   const s = moonSky(new Date(ms));
-  return { t: ms, sunDir: s.sun.dir, earthPos: s.earth.pos, earthDir: s.earth.dir, sunLat: s.sun.lat, sunLon: s.sun.lon, earthLat: s.earth.lat, earthLon: s.earth.lon };
+  return { t: ms, source: s.source, sunDir: s.sun.dir, earthPos: s.earth.pos, earthDir: s.earth.dir, sunLat: s.sun.lat, sunLon: s.sun.lon, earthLat: s.earth.lat, earthLon: s.earth.lon };
 }
 
 // Named sites. Coordinates are approximate (lat, lon east, degrees).
@@ -234,6 +234,7 @@ const dayLabel = (ms) => { const d = new Date(ms); return MONTHS[d.getUTCMonth()
 const windowName = () => (state.spanDays >= 100 ? '1 year' : state.spanDays > 31 ? '3 months' : '29.53 days');
 
 const siteLabel = (p) => (p.name ? ' · ' + p.name : p.near ? ' · near ' + p.near : '');
+const SUN_R_DEG = 0.2666;
 const fmtIn = (h) => (h < 1 ? 'under 1 h' : h >= 48 ? (h / 24).toFixed(1) + ' days' : Math.round(h) + ' h');
 
 /** Time from the selected moment to the next change of Sun / Earth visibility at a site. */
@@ -368,6 +369,13 @@ function drawCompare() {
   });
 }
 
+function dataSourceText() {
+  const rng = horizonsRange();
+  if (!rng) return 'computed in the browser (checked against NASA JPL Horizons)';
+  const end = state.start + state.spanDays * DAY;
+  if (state.start >= rng[0] && end <= rng[1]) return 'NASA JPL Horizons, hourly';
+  return 'NASA JPL Horizons where available (Nov 2026 to Dec 2027), computed in the browser outside that';
+}
 function scoreParts(r) {
   const slopeSafe = Math.min(Math.max((15 - r.slope) / 10, 0), 1);
   return { sun: 45 * r.sunPct, earth: 35 * r.earthPct, slope: 20 * slopeSafe, slopeSafe, halved: r.slope > 15 };
@@ -413,6 +421,7 @@ function siteCsv(p) {
     `# step_hours,${state.stepHours}`,
     '# terrain,LOLA LDEM_60S_240MPP_ADJ resampled to 250 m per pixel',
     '# observer_height_m,2',
+    `# sun_earth_positions,${dataSourceText()}`,
     '# notes,elevations are of the body centre above the local horizontal; azimuth is clockwise from north; sun_visible_fraction is the share of the solar disk diameter above the terrain horizon',
     'utc,sun_visible_fraction,sun_elevation_deg,sun_azimuth_deg,earth_visible,earth_elevation_deg,earth_azimuth_deg',
   ];
@@ -475,7 +484,7 @@ function renderPanel() {
     </div>
     <div class="block-title">At the selected time</div>
     <div class="now-row"><div class="now-chip sun" id="nowSun"></div><div class="now-chip earth" id="nowEarth"></div></div>
-    <div class="look"><button data-act="lookSun">View from site toward the Sun</button><button data-act="lookEarth">Toward Earth</button></div>
+    <div class="look"><button data-act="hview">Horizon view (eye level)</button><button data-act="lookSun">3D toward Sun</button><button data-act="lookEarth">3D toward Earth</button></div>
     <div class="step"><div class="step-h"><i>1</i><b>Power</b><span>sunlight over the window</span></div>
       <div class="metrics">
         <div class="metric sun"><div class="k">Sunlit</div><div class="v">${pct1(r.sunPct)}</div><div class="s">of the window</div></div>
@@ -505,7 +514,7 @@ function renderPanel() {
     <div class="block-title">How the score adds up</div>
     ${scoreTable(r)}
     <div class="export"><button data-act="csv">Download data (CSV)</button><button data-act="copy">Copy summary</button></div>
-    <div class="note">Window: ${new Date(state.start).toISOString().slice(0, 10)} + ${windowName()}, sampled every ${state.stepHours} h. Terrain: NASA LOLA 240 m data on a 250 m grid; antenna 2 m above ground.</div>`;
+    <div class="note">Window: ${new Date(state.start).toISOString().slice(0, 10)} + ${windowName()}, sampled every ${state.stepHours} h. Terrain: NASA LOLA 240 m data on a 250 m grid; antenna 2 m above ground. Sun and Earth positions: ${dataSourceText()}.</div>`;
   updateViewOffset();
   if (panel.classList.contains('mini')) { chartCache = null; return; }
   buildCharts();
@@ -582,6 +591,7 @@ function buildCharts() {
 }
 
 function drawCharts() {
+  drawHview();
   if (state.compare) { drawCompare(); return; }
   const p = state.pins[state.selected]; if (!p || !chartCache) return;
   const now = skyAt(p.report.profile, state.sky);
@@ -637,6 +647,7 @@ $('siteBody').addEventListener('click', (e) => {
     return;
   }
   const act = e.target.dataset?.act, pin = state.pins[state.selected];
+  if (act === 'hview' && pin) { openHview('sun'); return; }
   if ((act === 'lookSun' || act === 'lookEarth') && pin) { lookFrom(pin, act === 'lookSun' ? 'sun' : 'earth'); return; }
   if (act === 'csv' && pin) {
     const url = URL.createObjectURL(new Blob([siteCsv(pin)], { type: 'text/csv' }));
@@ -753,6 +764,131 @@ function updateHover() {
 
 // ---------- camera moves ----------
 let tween = null;
+// ---------- eye-level horizon view ----------
+// A first-person panorama drawn from the same 720-direction terrain horizon the numbers use,
+// so what is seen here is exactly what the site test measured. Equal angular scale on both axes.
+const hv = { open: false, az: 0, fov: 70, track: 'sun' };
+const EARTH_R_M = 6371000;
+function hvHorizon(profile, az) {
+  let f = (az / (2 * Math.PI)) * HORIZON_N;
+  f = ((f % HORIZON_N) + HORIZON_N) % HORIZON_N;
+  const i = f | 0, a = f - i;
+  return profile.horizon[i] * (1 - a) + profile.horizon[(i + 1) % HORIZON_N] * a;
+}
+function openHview(track) {
+  hv.open = true; hv.track = track; hv.fov = innerWidth < 900 ? 50 : 70;
+  $('hview').hidden = false;
+  if (innerWidth < 900 && !$('panel').classList.contains('mini')) { $('panel').classList.add('mini'); $('panelToggle').textContent = '▴'; }
+  drawHview();
+}
+function closeHview() { hv.open = false; $('hview').hidden = true; }
+function drawHview() {
+  if (!hv.open) return;
+  const p = state.pins[state.selected];
+  if (!p || !state.sky) { closeHview(); return; }
+  const c = $('hvCanvas'), dpr = Math.min(devicePixelRatio, 2), w = c.clientWidth, h = c.clientHeight;
+  if (!w || !h) return;
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const prof = p.report.profile, now = skyAt(prof, state.sky);
+  if (hv.track === 'sun') hv.az = now.sunAz; else if (hv.track === 'earth') hv.az = now.earthAz;
+  const ppd = w / hv.fov, span = h / ppd, elLo = -span * 0.36;      // pixels per degree; degrees at the bottom edge
+  const dAz = (az) => { const d = (az - hv.az) / DEG; return ((d + 540) % 360) - 180; };
+  const X = (az) => w / 2 + dAz(az) * ppd, Y = (elRad) => h - (elRad / DEG - elLo) * ppd;
+
+  g.fillStyle = '#02030a'; g.fillRect(0, 0, w, h);
+  // stars (fixed pattern, decoration only)
+  for (let i = 0; i < 260; i++) {
+    const a = ((i * 137.508) % 360) * DEG, e = (((i * 61.8034) % 100) / 100) * 62 - 4, s = 0.5 + ((i * 7) % 5) * 0.22;
+    const x = X(a), y = h - (e - elLo) * ppd;
+    if (x > -2 && x < w + 2 && y > 0 && y < h) { g.fillStyle = `rgba(255,255,255,${0.25 + ((i * 13) % 7) * 0.09})`; g.fillRect(x, y, s, s); }
+  }
+  // elevation grid
+  const stepEl = [1, 2, 5, 10, 20].find((v) => v * ppd >= 34) || 20;   // keep labels at least 34 px apart
+  g.font = '10.5px system-ui'; g.textBaseline = 'middle';
+  for (let e = Math.ceil(elLo / stepEl) * stepEl; e < elLo + span; e += stepEl) {
+    const y = h - (e - elLo) * ppd;
+    g.strokeStyle = e === 0 ? 'rgba(255,255,255,.34)' : 'rgba(255,255,255,.09)'; g.setLineDash(e === 0 ? [6, 5] : [2, 5]); g.lineWidth = 1;
+    g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,.5)'; g.textAlign = 'left'; g.fillText((e > 0 ? '+' : '') + e + '°' + (e === 0 ? ' level' : ''), 6, y - 7);
+  }
+  g.setLineDash([]);
+
+  // Sun: glow and true-size disk
+  const sx = X(now.sunAz), sy = Y(now.sunEl), sr = Math.max(SUN_R_DEG * ppd, 1.6);
+  const glow = g.createRadialGradient(sx, sy, 0, sx, sy, sr * 14);
+  glow.addColorStop(0, 'rgba(255,236,190,.55)'); glow.addColorStop(0.25, 'rgba(255,198,90,.16)'); glow.addColorStop(1, 'rgba(255,198,90,0)');
+  g.fillStyle = glow; g.beginPath(); g.arc(sx, sy, sr * 14, 0, 7); g.fill();
+  g.fillStyle = '#fff6dc'; g.beginPath(); g.arc(sx, sy, sr, 0, 7); g.fill();
+
+  // Earth: true-size disk with the right phase
+  const eDist = Math.hypot(state.sky.earthPos[0], state.sky.earthPos[1], state.sky.earthPos[2]);
+  const er = Math.max(Math.asin(EARTH_R_M / eDist) / DEG * ppd, 2.5), ex = X(now.earthAz), ey = Y(now.earthEl);
+  const sd = state.sky.sunDir, ed = state.sky.earthDir;
+  const lit = (1 - (sd[0] * ed[0] + sd[1] * ed[1] + sd[2] * ed[2])) / 2;      // share of Earth's disk that is sunlit
+  g.save(); g.translate(ex, ey); g.rotate(Math.atan2(sy - ey, sx - ex));
+  g.fillStyle = '#0b1b33'; g.beginPath(); g.arc(0, 0, er, 0, 7); g.fill();
+  const b = er * (2 * lit - 1);
+  g.fillStyle = '#6fb8ff'; g.beginPath(); g.arc(0, 0, er, -Math.PI / 2, Math.PI / 2);
+  if (b >= 0) g.ellipse(0, 0, Math.abs(b), er, 0, Math.PI / 2, Math.PI * 1.5, false); else g.ellipse(0, 0, Math.abs(b), er, 0, Math.PI / 2, -Math.PI / 2, true);
+  g.fill(); g.restore();
+
+  // terrain skyline (drawn last so it hides whatever is behind it)
+  g.beginPath(); g.moveTo(0, h);
+  for (let px = 0; px <= w; px += 1) g.lineTo(px, Y(hvHorizon(prof, hv.az + ((px - w / 2) / ppd) * DEG)));
+  g.lineTo(w, h); g.closePath();
+  const tg = g.createLinearGradient(0, Y(8 * DEG), 0, h); tg.addColorStop(0, '#565a63'); tg.addColorStop(0.5, '#23262d'); tg.addColorStop(1, '#0b0c10');
+  g.fillStyle = tg; g.fill();
+  g.strokeStyle = now.sunFrac > 0.05 ? 'rgba(255,236,200,.75)' : 'rgba(170,180,196,.55)'; g.lineWidth = 1.2;
+  g.beginPath();
+  for (let px = 0; px <= w; px += 1) { const y = Y(hvHorizon(prof, hv.az + ((px - w / 2) / ppd) * DEG)); if (px) g.lineTo(px, y); else g.moveTo(px, y); }
+  g.stroke();
+
+  // labels on the bodies when they clear the terrain; edge arrows when they are out of view
+  g.font = '600 11.5px system-ui'; g.textAlign = 'center';
+  const tag = (x, y, r, text, col, above) => { if (x < 30 || x > w - 30) return; g.fillStyle = col; g.fillText(text, x, above ? y - r - 11 : y + r + 12); };
+  tag(sx, sy, sr, now.sunFrac > 0.05 ? 'Sun' : 'Sun (behind terrain)', '#ffc65a', true);
+  tag(ex, ey, er, now.earthVis ? 'Earth' : 'Earth (behind terrain)', '#5db4ff', true);
+  const arrow = (az, name, col, row) => {
+    const d = dAz(az); if (Math.abs(d) < hv.fov / 2) return;
+    g.fillStyle = col; g.textAlign = d > 0 ? 'right' : 'left';
+    g.fillText(d > 0 ? `${name}: turn ${Math.round(Math.abs(d))}° right ▶` : `◀ ${name}: turn ${Math.round(Math.abs(d))}° left`, d > 0 ? w - 8 : 8, 16 + row * 16);
+  };
+  arrow(now.sunAz, 'Sun', '#ffc65a', 0); arrow(now.earthAz, 'Earth', '#5db4ff', 1);
+
+  // compass along the bottom
+  const stepAz = hv.fov > 90 ? 30 : hv.fov > 40 ? 15 : 5, names = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' };
+  g.font = '10.5px system-ui'; g.textAlign = 'center';
+  const c0 = hv.az / DEG - hv.fov / 2;
+  for (let a = Math.ceil(c0 / stepAz) * stepAz; a <= c0 + hv.fov; a += stepAz) {
+    const x = w / 2 + (a - hv.az / DEG) * ppd, aa = ((a % 360) + 360) % 360;
+    g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(x, h - 16, 1, 5);
+    g.fillStyle = names[aa] ? '#fff' : 'rgba(255,255,255,.55)'; g.fillText(names[aa] || aa + '°', x, h - 6);
+  }
+
+  $('hvTitle').textContent = `Horizon view · Site ${p.letter}`;
+  $('hvRead').innerHTML = `<span class="s">Sun ${clearText(now.sunEl, now.sunHor)}</span> · <span class="e">Earth ${clearText(now.earthEl, now.earthHor)}</span>`;
+  $('hview').querySelector('[data-hv="sun"]').classList.toggle('on', hv.track === 'sun');
+  $('hview').querySelector('[data-hv="earth"]').classList.toggle('on', hv.track === 'earth');
+}
+$('hview').addEventListener('click', (e) => {
+  const a = e.target.closest('[data-hv]')?.dataset.hv; if (!a) return;
+  if (a === 'close') { closeHview(); return; }
+  if (a === 'sun' || a === 'earth') hv.track = a;
+  if (a === 'in') hv.fov = Math.max(8, hv.fov / 1.4);
+  if (a === 'out') hv.fov = Math.min(140, hv.fov * 1.4);
+  drawHview();
+});
+{
+  const cv = $('hvCanvas'); let drag = null;
+  cv.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, az: hv.az }; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', (e) => { if (!drag) return; hv.track = null; hv.az = drag.az - ((e.clientX - drag.x) / (cv.clientWidth / hv.fov)) * DEG; drawHview(); });
+  const end = () => { drag = null; };
+  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  cv.addEventListener('wheel', (e) => { e.preventDefault(); hv.fov = Math.min(140, Math.max(8, hv.fov * (e.deltaY > 0 ? 1.15 : 0.87))); drawHview(); }, { passive: false });
+  new ResizeObserver(() => drawHview()).observe(cv);
+}
+
 /** Low third-person view across a site toward the Sun or Earth, so the horizon and long shadows are seen from near ground level. */
 function lookFrom(pin, body) {
   const w = toWorldDir(body === 'sun' ? state.sky.sunDir : state.sky.earthDir);
@@ -795,7 +931,7 @@ function setTime(ms) {
   state.lightDirty = true;
   const d = new Date(ms);
   $('clock').textContent = `${d.getUTCFullYear()} ${MONTHS[d.getUTCMonth()]} ${String(d.getUTCDate()).padStart(2, '0')} · ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} UTC`;
-  $('skyRead').innerHTML = `<span class="s">Sun ${(-state.sky.sunLat).toFixed(2)}°</span> and <span class="e">Earth ${(-state.sky.earthLat).toFixed(2)}°</span> above the pole's flat horizon`;
+  $('skyRead').innerHTML = `<span class="s">Sun ${(-state.sky.sunLat).toFixed(2)}°</span> and <span class="e">Earth ${(-state.sky.earthLat).toFixed(2)}°</span> above the pole's flat horizon · <span class="src-tag">${state.sky.source === 'horizons' ? 'NASA JPL Horizons' : 'computed in browser'}</span>`;
   if (document.activeElement !== $('scrub')) $('scrub').value = Math.round((ms - state.start) / (state.spanDays * DAY) * 1000);
   // sky objects
   const sw = toWorldDir(state.sky.sunDir);
@@ -964,6 +1100,7 @@ function frame(now) {
 async function boot() {
   resize();
   $('startDate').value = new Date(state.start).toISOString().slice(0, 10);
+  try { await loadHorizons(); } catch (e) { console.warn('JPL Horizons table not loaded; positions are computed in the browser', e); }
   terrain = await loadTerrain((f) => { $('loadText').textContent = `Loading NASA terrain… ${Math.round(f * 100)}%`; });
   gpu = new Gpu(renderer, terrain, 1024);
   gpu.terrainUniforms.uExag.value = EXAG;

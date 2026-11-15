@@ -1,0 +1,15 @@
+{
+  "start_ms": 1793491200000,
+  "step_ms": 3600000,
+  "rows": 10225,
+  "columns": [
+    "sun_sub_lon_deg_east",
+    "sun_sub_lat_deg",
+    "earth_sub_lon_deg_east",
+    "earth_sub_lat_deg",
+    "earth_moon_range_au"
+  ],
+  "source": "NASA JPL Horizons API, target 301 (Moon), observer 500@399 (geocentre), quantities 14, 15, 20",
+  "start_utc": "2026-11-01T00:00:00+00:00",
+  "stop_utc": "2028-01-01T00:00:00+00:00"
+}

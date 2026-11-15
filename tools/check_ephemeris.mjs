@@ -1,7 +1,7 @@
 // Compare the in-browser ephemeris with NASA SPICE reference values.
 // Usage: node tools/check_ephemeris.mjs
 import { readFileSync } from 'node:fs';
-import { moonSky } from '../src/ephemeris.js';
+import { moonSkyComputed as moonSky } from '../src/ephemeris.js';
 
 const ref = JSON.parse(readFileSync(new URL('./spice_reference.json', import.meta.url)));
 const wrap = (d) => ((d + 540) % 360) - 180;

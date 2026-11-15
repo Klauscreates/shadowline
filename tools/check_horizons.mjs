@@ -2,7 +2,7 @@
 // (Moon, geocentric observer, quantities 14 and 15, daily for 13 months).
 // Data file: tools/horizons_reference.txt, downloaded from https://ssd.jpl.nasa.gov/api/horizons.api
 import { readFileSync } from 'node:fs';
-import { moonSky } from '../src/ephemeris.js';
+import { moonSkyComputed as moonSky } from '../src/ephemeris.js';
 const txt = readFileSync(new URL('./horizons_reference.txt', import.meta.url), 'utf8');
 const body = txt.slice(txt.indexOf('$$SOE') + 5, txt.indexOf('$$EOE'));
 const MON = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
