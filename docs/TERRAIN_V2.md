@@ -85,3 +85,90 @@ The 2021/2023 PGDA grids above are re-adjusted versions of the same laser tracks
 ### What this means
 
 The finest whole-area height grids that really exist are 10 m to 83°S and 5 m to 87°S. Beyond that there are 27 site grids at 5 m. LOLA is a laser altimeter with gaps between ground tracks, so pixel size overstates true detail in places; the `_EFFRES` and shot-count files say where. Nothing here reaches boulder scale.
+
+## 2. Tile pyramid used by the site report
+
+| Level | Source grid | Where it is bundled | Tiles | Size in the repository | Used by the site report |
+|---|---|---|---|---|---|
+| 20 m | `LDEM_80S_20MPP_ADJ.TIF`, native pixels | boxes of ±10.5 km around the eight named sites | 68 tiles of 512 px (10.24 km) in `public/data/fine20/` | 35.7 MB | within 10 km of the site |
+| 80 m | `LDEM_80S_80MPP_ADJ.TIF`, native pixels | the whole 512 km map | 256 tiles of 400 px (32 km) in `public/data/fine/` | 81.9 MB (unchanged from `finer-terrain`) | within 20 km of the site |
+| 250 m | `LDEM_60S_240MPP_ADJ.TIF` resampled to 250 m | the whole map, `public/data/heights.bin` | one file | 8.4 MB (unchanged) | everything beyond, and the 3D map, live shadows and heat maps |
+
+`public/data/pyramid.json` lists the levels and which 20 m tiles exist. `tools/build_tiles.py` builds each level; for the 20 m level it reads only the needed windows of NASA's cloud-optimised file over HTTP, so the 2.7 GB file does not have to be downloaded. Rebuilding the 80 m level with the generalised script gives byte-identical tiles (same SHA-256 as before, `784f93c5…`).
+
+How the report chooses a grid (`horizonProfile` in `src/terrain.js`):
+
+- A level is used only if its tiles cover its whole use radius around the site. A pin dropped 8 km from a named site therefore gets "80 m terrain", not a part-20 m answer labelled 20 m.
+- The observer's height and the slope come from the finest level used. Slope is measured over two pixels of that grid (40 m, 160 m or 500 m), and the report states the baseline.
+- The horizon march steps no farther than one pixel of the grid it is reading, out to that grid's use radius, then hands over to the next grid. With the base map alone the march is the same as in the submitted version.
+- The badge beside the coordinates, the note under the report, the copied summary and the CSV header all name the grids actually used.
+
+### Comparison at the eight named sites
+
+Produced by `node tools/compare_levels.mjs` (same code as the app, tiles read from disk). Observer 2 m above ground. The browser gives the same numbers for the sites checked by hand (Shackleton ridge, de Gerlache rim, IM-2 at 20 m).
+
+
+#### Window: 2026-11-15 + 29.53 days, 1 h steps
+
+| Site | Finest grid | Grids used | Elevation m | Sunlit % | Earth in view % | Slope ° (baseline) | Score |
+|---|---|---|---|---|---|---|---|
+| Shackleton ridge | 250 m | 250 m | 1944 | 100.0 | 49.5 | 3.0 (500 m) | 82 |
+|  | 80 m | 80 m + 250 m | 1954 | 100.0 | 40.9 | 1.3 (160 m) | 79 |
+|  | 20 m | 20 m + 80 m + 250 m | 1955 | 99.5 | 36.0 | 6.3 (40 m) | 75 |
+| de Gerlache rim | 250 m | 250 m | 1755 | 65.2 | 51.1 | 6.6 (500 m) | 64 |
+|  | 80 m | 80 m + 250 m | 1753 | 60.1 | 50.9 | 9.5 (160 m) | 56 |
+|  | 20 m | 20 m + 80 m + 250 m | 1754 | 58.9 | 50.9 | 11.3 (40 m) | 52 |
+| Chang'e-7 candidate | 250 m | 250 m | 1631 | 79.4 | 51.1 | 4.2 (500 m) | 74 |
+|  | 80 m | 80 m + 250 m | 1632 | 66.2 | 50.9 | 6.1 (160 m) | 65 |
+|  | 20 m | 20 m + 80 m + 250 m | 1632 | 64.3 | 50.9 | 5.2 (40 m) | 66 |
+| IM-2 Athena target | 250 m | 250 m | 5307 | 52.5 | 83.1 | 2.1 (500 m) | 73 |
+|  | 80 m | 80 m + 250 m | 5312 | 52.2 | 82.5 | 1.1 (160 m) | 72 |
+|  | 20 m | 20 m + 80 m + 250 m | 5313 | 52.2 | 82.5 | 1.3 (40 m) | 72 |
+| Malapert massif | 250 m | 250 m | 5128 | 62.7 | 100.0 | 3.7 (500 m) | 83 |
+|  | 80 m | 80 m + 250 m | 5132 | 55.0 | 100.0 | 5.0 (160 m) | 80 |
+|  | 20 m | 20 m + 80 m + 250 m | 5131 | 51.5 | 100.0 | 7.3 (40 m) | 74 |
+| Haworth | 250 m | 250 m | -3305 | 0.0 | 0.0 | 4.1 (500 m) | 20 |
+|  | 80 m | 80 m + 250 m | -3313 | 0.0 | 0.0 | 6.4 (160 m) | 17 |
+|  | 20 m | 20 m + 80 m + 250 m | -3316 | 0.0 | 0.0 | 10.3 (40 m) | 9 |
+| LCROSS impact, Cabeus | 250 m | 250 m | -3829 | 0.0 | 10.4 | 0.5 (500 m) | 24 |
+|  | 80 m | 80 m + 250 m | -3833 | 0.0 | 10.4 | 0.2 (160 m) | 24 |
+|  | 20 m | 20 m + 80 m + 250 m | -3834 | 0.0 | 10.4 | 1.6 (40 m) | 24 |
+| Shackleton floor | 250 m | 250 m | -2783 | 0.0 | 0.0 | 0.5 (500 m) | 20 |
+|  | 80 m | 80 m + 250 m | -2788 | 0.0 | 0.0 | 1.4 (160 m) | 20 |
+|  | 20 m | 20 m + 80 m + 250 m | -2789 | 0.0 | 0.0 | 2.2 (40 m) | 20 |
+
+#### Window: 2026-11-15 + 365 days, 6 h steps
+
+| Site | Finest grid | Grids used | Elevation m | Sunlit % | Earth in view % | Slope ° (baseline) | Score |
+|---|---|---|---|---|---|---|---|
+| Shackleton ridge | 250 m | 250 m | 1944 | 63.2 | 52.8 | 3.0 (500 m) | 67 |
+|  | 80 m | 80 m + 250 m | 1954 | 77.3 | 47.9 | 1.3 (160 m) | 72 |
+|  | 20 m | 20 m + 80 m + 250 m | 1955 | 65.1 | 41.9 | 6.3 (40 m) | 61 |
+| de Gerlache rim | 250 m | 250 m | 1755 | 44.9 | 56.4 | 6.6 (500 m) | 57 |
+|  | 80 m | 80 m + 250 m | 1753 | 42.4 | 56.4 | 9.5 (160 m) | 50 |
+|  | 20 m | 20 m + 80 m + 250 m | 1754 | 41.6 | 56.4 | 11.3 (40 m) | 46 |
+| Chang'e-7 candidate | 250 m | 250 m | 1631 | 60.7 | 56.9 | 4.2 (500 m) | 67 |
+|  | 80 m | 80 m + 250 m | 1632 | 56.5 | 56.9 | 6.1 (160 m) | 63 |
+|  | 20 m | 20 m + 80 m + 250 m | 1632 | 55.4 | 56.9 | 5.2 (40 m) | 64 |
+| IM-2 Athena target | 250 m | 250 m | 5307 | 46.7 | 81.9 | 2.1 (500 m) | 70 |
+|  | 80 m | 80 m + 250 m | 5312 | 46.5 | 81.6 | 1.1 (160 m) | 69 |
+|  | 20 m | 20 m + 80 m + 250 m | 5313 | 46.5 | 81.6 | 1.3 (40 m) | 69 |
+| Malapert massif | 250 m | 250 m | 5128 | 52.6 | 100.0 | 3.7 (500 m) | 79 |
+|  | 80 m | 80 m + 250 m | 5132 | 47.1 | 100.0 | 5.0 (160 m) | 76 |
+|  | 20 m | 20 m + 80 m + 250 m | 5131 | 44.5 | 100.0 | 7.3 (40 m) | 70 |
+| Haworth | 250 m | 250 m | -3305 | 0.0 | 0.0 | 4.1 (500 m) | 20 |
+|  | 80 m | 80 m + 250 m | -3313 | 0.0 | 0.0 | 6.4 (160 m) | 17 |
+|  | 20 m | 20 m + 80 m + 250 m | -3316 | 0.0 | 0.0 | 10.3 (40 m) | 9 |
+| LCROSS impact, Cabeus | 250 m | 250 m | -3829 | 0.0 | 16.2 | 0.5 (500 m) | 26 |
+|  | 80 m | 80 m + 250 m | -3833 | 0.0 | 16.2 | 0.2 (160 m) | 26 |
+|  | 20 m | 20 m + 80 m + 250 m | -3834 | 0.0 | 16.1 | 1.6 (40 m) | 26 |
+| Shackleton floor | 250 m | 250 m | -2783 | 0.0 | 0.0 | 0.5 (500 m) | 20 |
+|  | 80 m | 80 m + 250 m | -2788 | 0.0 | 0.0 | 1.4 (160 m) | 20 |
+|  | 20 m | 20 m + 80 m + 250 m | -2789 | 0.0 | 0.0 | 2.2 (40 m) | 20 |
+
+What the table shows, honestly:
+
+- Finer grids usually report **steeper** ground, because a shorter baseline does not average small features away. A slope over 40 m and a slope over 500 m are different measurements, so scores at different levels are not directly comparable.
+- Sunlight at ridge and rim sites moves by several percentage points between levels, and not always in the same direction (Shackleton ridge over a year: 63 %, 77 %, 65 %). Near a sharp crest, the answer depends on features smaller than the coarser pixels and on exactly where the pin sits. The preset coordinates are approximate, so these rows are not the best-lit points of each ridge.
+- Sites deep in shadow or on broad flat ground (Haworth, Shackleton floor, Cabeus, IM-2) barely change.
+- This is a comparison between grids, not a validation against an independent illumination study. That check has not been done.
