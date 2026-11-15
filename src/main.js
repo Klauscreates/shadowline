@@ -121,7 +121,7 @@ const state = {
   start: Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()),
   spanDays: 29.53,
   t: 0,
-  playing: true,
+  playing: false,
   speed: 1,          // days per second
   layer: 0,
   samples: [], stepHours: 1,
