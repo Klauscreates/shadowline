@@ -3,7 +3,7 @@
 Deadline: Sunday, November 15, 2026, 11:59 PM Pacific time (Los Angeles virtual Local Event).
 
 ## Team
-Shadowline (Los Angeles, CA virtual event). Member: Nikolai Klaus Stoloff.
+Artemis Lunar Future (Los Angeles, CA virtual event). Member: Nikolai Klaus Stoloff.
 
 ## Project name
 Shadowline
