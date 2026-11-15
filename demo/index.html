@@ -23,6 +23,11 @@
   .tri { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 8px; }
   figure { margin: 0; } figcaption { font-size: clamp(13px, 1.2vw, 16px); color: #cfd7e4; margin-top: 10px; line-height: 1.4; }
   .tri img { aspect-ratio: 16 / 10; object-fit: cover; }
+  .small-tri { max-width: 1000px; }
+  .small-tri img { aspect-ratio: 16 / 8; }
+  .stat .big { font-size: clamp(24px, 3.2vw, 44px); }
+  section .tag { text-align: left; }
+  .hero .tag { text-align: center; }
   .three { display: grid; grid-template-columns: 1fr 1fr .9fr; gap: 3vw; align-items: center; }
   img.tall { max-height: 84vh; width: auto; max-width: 100%; justify-self: center; }
   .last { grid-template-columns: 1.6fr .55fr; }
@@ -69,14 +74,18 @@
 </section>
 
 <section>
-  <div>
-    <h2>Real light on real terrain, for any date</h2>
-    <div class="tri">
-      <figure><img src="5-top.jpg" alt="Top-down view of sunlight and shadow at the south pole"><figcaption><b>Live light.</b> Shadows at the chosen moment. Press play to watch them move.</figcaption></figure>
-      <figure><img src="2-sun.jpg" alt="Map of the share of time each spot is in sunlight"><figcaption><b class="s">Sunlight.</b> Share of the window each spot is lit.</figcaption></figure>
-      <figure><img src="3-earth.jpg" alt="Map of the share of time Earth is above the horizon"><figcaption><b class="e">Earth link.</b> Share of the window Earth is above the terrain.</figcaption></figure>
+  <div class="two">
+    <div>
+      <div class="tag">Walkthrough · step 1 of 3</div>
+      <h2>Pick a site</h2>
+      <ul>
+        <li>The app opens with three south-pole sites loaded. Add your own by clicking the map, typing coordinates, or choosing a named site.</li>
+        <li>Here: the <b>IM-2 landing target</b> on Mons Mouton. Over one lunar day it is sunlit <b class="s">52.5%</b> of the time and has Earth in view <b class="e">83.1%</b>.</li>
+        <li>Right now the Sun is 0.6° below the terrain, with <b>sunrise in 3 hours</b>. Earth is in view, with <b>Earthset in 19.5 days</b>.</li>
+        <li>An eye-level horizon view shows the same skyline with the Sun and Earth at true size.</li>
+      </ul>
     </div>
-    <p>NASA LOLA terrain, 512 km across. The Moon's curve, the Sun's disk and Earth's wobble are all in the calculation. It runs in the browser with nothing to install.</p>
+    <img class="tall" src="6-report.jpg" alt="Site report for the IM-2 target with countdowns to the next sunrise and Earthset">
   </div>
   <div class="n">3 / 7</div>
 </section>
@@ -84,46 +93,50 @@
 <section>
   <div class="two">
     <div>
-      <h2>Test any site in one click</h2>
+      <div class="tag">Walkthrough · step 2 of 3</div>
+      <h2>Change the arrival date</h2>
       <ul>
-        <li><b>Right now:</b> how far the <b class="s">Sun</b> and <b class="e">Earth</b> sit above or below the terrain.</li>
-        <li><b>Countdowns:</b> time to the next sunset, sunrise, Earthset or Earthrise.</li>
-        <li><b>Over the window:</b> sunlight share, longest dark stretch, Earth contact, longest loss of contact, slope.</li>
-        <li>A 0 to 100 score with the sum shown (example weights), an eye-level horizon view with the Sun and Earth at true size, and the full time series as a CSV file.</li>
+        <li>Set a mission length, here <b>14 days</b>. The table shows the same mission arriving on time and 1, 3 and 7 days late.</li>
+        <li>On time, the mission is sunlit <b class="s">97%</b> of the time. <b>Slip a week and that drops to 63%</b>, with a 5-day stretch of darkness.</li>
+        <li>Slip only one day and it improves to 100%. Timing matters as much as place.</li>
+        <li><b>Find arrival windows</b> searches the next 60 days and ranks the best dates. One click moves the mission there.</li>
       </ul>
     </div>
-    <img class="tall" src="6-report.jpg" alt="Site report for the IM-2 target with countdowns to the next sunrise and Earthset">
+    <img class="tall" src="8-mission.jpg" alt="Launch-slip table and best arrival dates for the IM-2 target">
   </div>
   <div class="n">4 / 7</div>
 </section>
 
 <section>
-  <div class="three">
+  <div class="two">
     <div>
-      <h2>Compare sites and launch dates</h2>
+      <div class="tag">Walkthrough · step 3 of 3</div>
+      <h2>Compare the options</h2>
       <ul>
-        <li>Up to four sites in one table. The best value in each row is green.</li>
-        <li><b>Launch slip:</b> the same mission arriving on time and 1, 3 and 7 days late. <b>Find arrival windows</b> searches the next 60 days.</li>
-        <li><b>Finding:</b> at the IM-2 target, a 7-day slip cuts sunlight over a 14-day mission from 97% to 63%. On the Shackleton ridge it stays at 100%.</li>
-        <li>Add a site by clicking the map, typing coordinates, or picking a named site.</li>
-        <li><b>Find best sites</b> scans the whole map and pins the top three.</li>
+        <li>Up to four sites side by side, same dates, best value in each row in green.</li>
+        <li><b>The trade-off is plain:</b> the Shackleton ridge has sunlight <b class="s">100%</b> of the lunar day but Earth in view only <b class="e">49.5%</b>. The IM-2 target is the reverse: <b class="s">52.5%</b> sun, <b class="e">83.1%</b> Earth.</li>
+        <li>The Shackleton crater floor, 20 km away, gets neither. It is in permanent shadow.</li>
+        <li>Power, communication and ground slope stay as separate numbers, so a team can weigh them its own way.</li>
       </ul>
     </div>
     <img class="tall" src="7-compare.jpg" alt="Compare table showing four pinned sites side by side">
-    <img class="tall" src="8-mission.jpg" alt="Launch-slip table and best arrival dates for the IM-2 target">
   </div>
   <div class="n">5 / 7</div>
 </section>
 
 <section>
   <div>
-    <h2>Checked, not just pretty</h2>
-    <div class="stats">
-      <div class="stat"><div class="big">0.008°</div><p>Sun and Earth positions come straight from NASA JPL Horizons. The in-browser backup used outside its dates agrees to 0.008° (0.004° against NASA SPICE).</p></div>
-      <div class="stat"><div class="big">0.1%</div><p>Average gap between the GPU heat maps and an independent site-by-site calculation, over 60 random points.</p></div>
-      <div class="stat"><div class="big">250 m</div><p>Terrain grid, from NASA's 240 m LOLA data. Smaller rocks and ridges are not seen, and the app says so.</p></div>
+    <h2>Real NASA data, checked</h2>
+    <div class="tri small-tri">
+      <figure><img src="5-top.jpg" alt="Top-down view of sunlight and shadow at the south pole"><figcaption><b>Live light.</b> Real shadows on NASA LOLA terrain for any date.</figcaption></figure>
+      <figure><img src="2-sun.jpg" alt="Map of the share of time each spot is in sunlight"><figcaption><b class="s">Sunlight map.</b> Share of the window each spot is lit.</figcaption></figure>
+      <figure><img src="3-earth.jpg" alt="Map of the share of time Earth is above the horizon"><figcaption><b class="e">Earth-link map.</b> Share of the window Earth is above the terrain.</figcaption></figure>
     </div>
-    <p style="margin-top:26px">"Earth in view" means the centre of Earth is above the terrain for an antenna 2 m off the ground. It is not a radio link calculation. Research and education only.</p>
+    <div class="stats">
+      <div class="stat"><div class="big">JPL Horizons</div><p>Sun and Earth positions come straight from NASA JPL Horizons. The in-browser backup agrees to 0.008° (0.004° against NASA SPICE).</p></div>
+      <div class="stat"><div class="big">0.1%</div><p>Average gap between the GPU heat maps and an independent site-by-site calculation, over 60 random points.</p></div>
+      <div class="stat"><div class="big">250 m</div><p>Terrain grid, from NASA's 240 m LOLA data. Smaller rocks and ridges are not seen. "Earth in view" is line of sight, not a radio link budget.</p></div>
+    </div>
   </div>
   <div class="n">6 / 7</div>
 </section>
