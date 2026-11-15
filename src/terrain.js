@@ -1,7 +1,7 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 // CPU side of the terrain: loading, map <-> sphere maths, height sampling,
 // horizon profiles and per-site time series.
-import { SUN_RADIUS_RAD } from './ephemeris.js?v=21';
+import { SUN_RADIUS_RAD } from './ephemeris.js?v=22';
 
 export const R = 1737400;          // lunar reference radius, m
 const DEG = Math.PI / 180;
@@ -60,6 +60,68 @@ export class Terrain {
   }
 }
 
+/**
+ * Finer terrain (NASA LOLA 80 m grid, native pixels) held as small tiles that are
+ * fetched only around the sites being tested. Used for the near-field horizon,
+ * the observer's own height and the slope. Everything else uses the 250 m map.
+ */
+export const FINE_RADIUS_M = 20000;
+export class FineTerrain {
+  constructor(meta) {
+    this.meta = meta;
+    this.nt = meta.tiles; this.tp = meta.tile_px; this.px = meta.pixel_m; this.L = meta.half_extent_m; this.unit = meta.unit_m;
+    this.n = this.nt * this.tp;
+    this.tiles = new Array(this.nt * this.nt).fill(null);
+    this.pending = new Map();
+  }
+  static async open() {
+    const res = await fetch('public/data/fine/fine.json');
+    if (!res.ok) throw new Error('no fine terrain');
+    return new FineTerrain(await res.json());
+  }
+  loadTile(i, j) {
+    const k = j * this.nt + i;
+    if (this.tiles[k]) return Promise.resolve();
+    if (!this.pending.has(k)) {
+      this.pending.set(k, fetch(`public/data/fine/t_${i}_${j}.bin`).then((r) => {
+        if (!r.ok) throw new Error('tile ' + r.status);
+        return r.arrayBuffer();
+      }).then((buf) => { this.tiles[k] = new Int16Array(buf); this.pending.delete(k); }));
+    }
+    return this.pending.get(k);
+  }
+  /** Fetch every tile within `radius` metres of a map point. */
+  ensure(x, y, radius) {
+    const span = this.tp * this.px, jobs = [];
+    const i0 = Math.floor((x - radius + this.L) / span), i1 = Math.floor((x + radius + this.L) / span);
+    const j0 = Math.floor((y - radius + this.L) / span), j1 = Math.floor((y + radius + this.L) / span);
+    for (let j = Math.max(0, j0); j <= Math.min(this.nt - 1, j1); j++) {
+      for (let i = Math.max(0, i0); i <= Math.min(this.nt - 1, i1); i++) jobs.push(this.loadTile(i, j));
+    }
+    return Promise.all(jobs);
+  }
+  /** One native pixel, or NaN if its tile is not loaded. */
+  at(gi, gj) {
+    if (gi < 0 || gj < 0 || gi >= this.n || gj >= this.n) return NaN;
+    const tp = this.tp, ti = (gi / tp) | 0, tj = (gj / tp) | 0;
+    const tile = this.tiles[tj * this.nt + ti];
+    return tile ? tile[(gj - tj * tp) * tp + (gi - ti * tp)] * this.unit : NaN;
+  }
+  /** Bilinear height (m), or NaN where the tiles are not loaded. */
+  height(x, y) {
+    const fx = (x + this.L) / this.px - 0.5, fy = (y + this.L) / this.px - 0.5;
+    const i = Math.floor(fx), j = Math.floor(fy), a = fx - i, b = fy - j;
+    return (this.at(i, j) * (1 - a) + this.at(i + 1, j) * a) * (1 - b) + (this.at(i, j + 1) * (1 - a) + this.at(i + 1, j + 1) * a) * b;
+  }
+  /** Slope in degrees over a two-pixel (160 m) baseline, or NaN. */
+  slope(x, y) {
+    const d = this.px;
+    const gx = (this.height(x + d, y) - this.height(x - d, y)) / (2 * d);
+    const gy = (this.height(x, y + d) - this.height(x, y - d)) / (2 * d);
+    return Math.atan(Math.hypot(gx, gy)) / DEG;
+  }
+}
+
 // --- map <-> sphere (south polar stereographic, pole frame: z toward the south pole) ---
 export function mapToLatLon(x, y) {
   const r = Math.hypot(x, y);
@@ -102,26 +164,33 @@ export const HORIZON_N = 720;
  * for an observer OBSERVER_M above the ground. Lunar curvature is included because
  * the march is done in true 3D.
  */
-export function horizonProfile(terrain, x, y) {
+export function horizonProfile(terrain, x, y, fine = null) {
   const { up, north, east } = localFrame(x, y);
-  const rad0 = R + terrain.height(x, y) + OBSERVER_M;
+  let h0 = terrain.height(x, y), usedFine = false;
+  if (fine) { const hf = fine.height(x, y); if (hf === hf) { h0 = hf; usedFine = true; } }
+  const rad0 = R + h0 + OBSERVER_M;
   const p0 = [up[0] * rad0, up[1] * rad0, up[2] * rad0];
   const out = new Float32Array(HORIZON_N);
+  const dt0 = usedFine ? 40 : 120;
   for (let k = 0; k < HORIZON_N; k++) {
     const az = (k / HORIZON_N) * 2 * Math.PI;
     const ca = Math.cos(az), sa = Math.sin(az);
     const dx = north[0] * ca + east[0] * sa;
     const dy = north[1] * ca + east[1] * sa;
     const dz = north[2] * ca + east[2] * sa;
-    let best = -0.5, t = 0, dt = 120;
-    for (let i = 0; i < 400; i++) {
+    let best = -0.5, t = 0, dt = dt0;
+    for (let i = 0; i < 560; i++) {
       t += dt;
       const px = p0[0] + dx * t, py = p0[1] + dy * t, pz = p0[2] + dz * t;
       const len = Math.hypot(px, py, pz);
       const kmap = 2 * R / (len + pz);
       const mx = px * kmap, my = py * kmap;
       if (!terrain.inside(mx, my)) break;
-      const s = (R + terrain.height(mx, my)) / len;
+      // near the site use the 80 m grid; farther out the 250 m map is enough
+      let hh = NaN;
+      if (usedFine && t < FINE_RADIUS_M) hh = fine.height(mx, my);
+      if (hh !== hh) hh = terrain.height(mx, my);
+      const s = (R + hh) / len;
       const vx = px * s - p0[0], vy = py * s - p0[1], vz = pz * s - p0[2];
       const vu = vx * up[0] + vy * up[1] + vz * up[2];
       const vh = Math.sqrt(Math.max(vx * vx + vy * vy + vz * vz - vu * vu, 1e-6));
@@ -132,7 +201,7 @@ export function horizonProfile(terrain, x, y) {
     }
     out[k] = best;
   }
-  return { horizon: out, up, north, east, p0 };
+  return { horizon: out, up, north, east, p0, fine: usedFine, height: h0 };
 }
 
 function horizonAt(h, az) {
@@ -169,8 +238,8 @@ function longestRun(flags, stepHours) {
 }
 
 /** Full site report over a list of ephemeris samples. */
-export function analyseSite(terrain, x, y, samples, stepHours) {
-  const profile = horizonProfile(terrain, x, y);
+export function analyseSite(terrain, x, y, samples, stepHours, fine = null) {
+  const profile = horizonProfile(terrain, x, y, fine);
   const n = samples.length;
   const sun = new Float32Array(n), earth = new Uint8Array(n);
   const sunAz = new Float32Array(n), sunEl = new Float32Array(n);
@@ -185,14 +254,15 @@ export function analyseSite(terrain, x, y, samples, stepHours) {
     dark[i] = s.sunFrac < 0.05 ? 1 : 0;
     mute[i] = s.earthVis ? 0 : 1;
   }
-  const slope = terrain.slope(x, y);
+  let slope = terrain.slope(x, y), slopeBaseM = 2 * terrain.px;
+  if (profile.fine) { const sf = fine.slope(x, y); if (sf === sf) { slope = sf; slopeBaseM = 2 * fine.px; } }
   const sunPct = sunSum / n, earthPct = earthSum / n, bothPct = bothSum / n;
   const slopeSafe = Math.min(Math.max((15 - slope) / 10, 0), 1);
   let score = 100 * (0.45 * sunPct + 0.35 * earthPct + 0.20 * slopeSafe);
   if (slope > 15) score *= 0.5;
   const ll = mapToLatLon(x, y);
   return {
-    x, y, lat: ll.lat, lon: ll.lon, elevation: terrain.height(x, y), slope,
+    x, y, lat: ll.lat, lon: ll.lon, elevation: profile.height, slope, slopeBaseM, fine: profile.fine,
     sunPct, earthPct, bothPct, score: Math.round(score),
     longestDarkH: longestRun(dark, stepHours), longestMuteH: longestRun(mute, stepHours),
     profile, series: { sun, earth, sunAz, sunEl, earthAz, earthEl },

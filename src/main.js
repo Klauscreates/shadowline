@@ -1,12 +1,12 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
-import { moonSky } from './ephemeris.js?v=21';
-import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N } from './terrain.js?v=21';
-import { Gpu } from './gpu.js?v=21';
+import { moonSky } from './ephemeris.js?v=22';
+import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N, FineTerrain, FINE_RADIUS_M } from './terrain.js?v=22';
+import { Gpu } from './gpu.js?v=22';
 
 // If the browser kept an older copy of the page next to this newer script, reload once to get a matching set.
-const BUILD = '21';
+const BUILD = '22';
 if (document.querySelector('meta[name="build"]')?.content !== BUILD) {
   if (!/[?&]fresh=/.test(location.search)) location.replace(location.pathname + '?fresh=' + Date.now());
   throw new Error('This page is out of date. Please reload.');
@@ -43,7 +43,7 @@ controls.zoomSpeed = 0.9;
 controls.enabled = false;
 
 const toWorldDir = (d) => new THREE.Vector3(d[0], d[2], -d[1]);
-let terrain, gpu;
+let terrain, gpu, fine = null;
 
 function mapToWorld(x, y, lift = 0) {
   return new THREE.Vector3(x / 1000, terrain.height(x, y) * EXAG / 1000 + lift, -y / 1000);
@@ -174,7 +174,7 @@ function rebuildWindow() {
   gpu.terrainUniforms.uHeatMax.value.set(1, 1, 1);
   gpu.resetAccum();
   state.t = Math.min(Math.max(state.t, state.start), state.start + span * DAY - 1);
-  for (const p of state.pins) p.report = analyseSite(terrain, p.x, p.y, state.samples, state.stepHours);
+  for (const p of state.pins) p.report = analyseSite(terrain, p.x, p.y, state.samples, state.stepHours, p.fine ? fine : null);
   renderPanel();
   updateLegend();
 }
@@ -190,6 +190,18 @@ function nearestFeature(x, y) {
   return best;
 }
 
+/** Fetch the 80 m tiles around a site, then redo its horizon, slope and report with them. */
+async function refinePin(pin) {
+  if (!fine) return;
+  try {
+    await fine.ensure(pin.x, pin.y, FINE_RADIUS_M + 2000);
+    if (!state.pins.includes(pin)) return;
+    pin.fine = true; pin.mis = null;
+    pin.report = analyseSite(terrain, pin.x, pin.y, state.samples, state.stepHours, fine);
+    state.windows = null;
+    renderPanel();
+  } catch (e) { console.warn('fine terrain not used for site ' + pin.letter, e); }
+}
 function addPin(x, y, select = true, name = null) {
   if (state.pins.length >= PIN_COLORS.length) removePin(0);
   const used = new Set(state.pins.map((p) => p.color));
@@ -209,6 +221,7 @@ function addPin(x, y, select = true, name = null) {
   label.el.style.background = color; label.el.style.color = '#0a0d14';
   const pin = { x, y, color, letter, name, group, ring, label, near: nearestFeature(x, y), report: analyseSite(terrain, x, y, state.samples, state.stepHours) };
   state.pins.push(pin);
+  refinePin(pin);
   if (select || state.selected < 0) state.selected = state.pins.length - 1;
   $('hint').classList.add('gone');
   renderPanel();
@@ -391,9 +404,9 @@ function siteSummary(p) {
     `Sunlit ${pct1(r.sunPct)} of window, longest dark stretch ${fmtDur(r.longestDarkH)}`,
     `Earth in view ${pct1(r.earthPct)} of window, longest loss of contact ${fmtDur(r.longestMuteH)}`,
     `Sunlight and Earth contact together ${pct1(r.bothPct)}`,
-    `Slope ${r.slope.toFixed(1)} deg (500 m baseline)`,
+    `Slope ${r.slope.toFixed(1)} deg (${Math.round(r.slopeBaseM / 10) * 10} m baseline)`,
     `Score ${r.score}/100 (45% sunlight, 35% Earth contact, 20% slope)`,
-    `Terrain: LOLA LDEM_60S_240MPP_ADJ resampled to 250 m; observer 2 m above ground`,
+    `Terrain: ${r.fine ? 'LOLA LDEM_80S_80MPP_ADJ (80 m) within 20 km of the site, LDEM_60S_240MPP_ADJ resampled to 250 m beyond' : 'LOLA LDEM_60S_240MPP_ADJ resampled to 250 m'}; observer 2 m above ground`,
   ].join('\n');
 }
 function siteCsv(p) {
@@ -411,7 +424,7 @@ function siteCsv(p) {
     `# both_fraction,${r.bothPct.toFixed(4)}`,
     `# score,${r.score}`,
     `# step_hours,${state.stepHours}`,
-    '# terrain,LOLA LDEM_60S_240MPP_ADJ resampled to 250 m per pixel',
+    `# terrain,${r.fine ? 'LOLA LDEM_80S_80MPP_ADJ 80 m within 20 km of the site; LDEM_60S_240MPP_ADJ resampled to 250 m beyond' : 'LOLA LDEM_60S_240MPP_ADJ resampled to 250 m per pixel'}`,
     '# observer_height_m,2',
     '# notes,elevations are of the body centre above the local horizontal; azimuth is clockwise from north; sun_visible_fraction is the share of the solar disk diameter above the terrain horizon',
     'utc,sun_visible_fraction,sun_elevation_deg,sun_azimuth_deg,earth_visible,earth_elevation_deg,earth_azimuth_deg',
@@ -469,7 +482,7 @@ function renderPanel() {
       </div>
       <div>
         <div class="site-name">Site ${p.letter}${siteLabel(p)}</div>
-        <div class="site-coord">${Math.abs(r.lat).toFixed(3)}°${r.lat < 0 ? 'S' : 'N'} · ${Math.abs(r.lon).toFixed(2)}°${r.lon < 0 ? 'W' : 'E'}</div>
+        <div class="site-coord"><span class="res ${r.fine ? 'hi' : ''}">${r.fine ? '80 m terrain' : '250 m terrain'}</span>${Math.abs(r.lat).toFixed(3)}°${r.lat < 0 ? 'S' : 'N'} · ${Math.abs(r.lon).toFixed(2)}°${r.lon < 0 ? 'W' : 'E'}</div>
         <div class="verdict">${verdict(r)}</div>
       </div>
     </div>
@@ -488,7 +501,7 @@ function renderPanel() {
       </div></div>
     <div class="step"><div class="step-h"><i>3</i><b>Ground</b><span>is it safe to set down</span></div>
       <div class="metrics">
-        <div class="metric"><div class="k">Slope</div><div class="v" style="color:${r.slope > 15 ? 'var(--bad)' : r.slope > 10 ? 'var(--sun)' : 'var(--good)'}">${r.slope.toFixed(1)}°</div><div class="s">over a 500 m baseline</div></div>
+        <div class="metric"><div class="k">Slope</div><div class="v" style="color:${r.slope > 15 ? 'var(--bad)' : r.slope > 10 ? 'var(--sun)' : 'var(--good)'}">${r.slope.toFixed(1)}°</div><div class="s">over a ${Math.round(r.slopeBaseM / 10) * 10} m baseline</div></div>
         <div class="metric"><div class="k">Elevation</div><div class="v">${Math.round(r.elevation).toLocaleString()} m</div><div class="s">vs 1,737.4 km sphere</div></div>
       </div></div>
     <div class="step"><div class="step-h"><i>4</i><b>Both at once</b><span>powered and in contact</span></div>
@@ -505,7 +518,7 @@ function renderPanel() {
     <div class="block-title">How the score adds up</div>
     ${scoreTable(r)}
     <div class="export"><button data-act="csv">Download data (CSV)</button><button data-act="copy">Copy summary</button></div>
-    <div class="note">Window: ${new Date(state.start).toISOString().slice(0, 10)} + ${windowName()}, sampled every ${state.stepHours} h. Terrain: NASA LOLA 240 m data on a 250 m grid; antenna 2 m above ground.</div>`;
+    <div class="note">Window: ${new Date(state.start).toISOString().slice(0, 10)} + ${windowName()}, sampled every ${state.stepHours} h. Terrain: ${r.fine ? 'NASA LOLA 80 m grid within 20 km of the site, 250 m grid beyond' : 'NASA LOLA 240 m data on a 250 m grid' + (fine ? ' (loading the 80 m grid…)' : '')}; antenna 2 m above ground.</div>`;
   updateViewOffset();
   if (panel.classList.contains('mini')) { chartCache = null; return; }
   buildCharts();
@@ -965,6 +978,7 @@ async function boot() {
   resize();
   $('startDate').value = new Date(state.start).toISOString().slice(0, 10);
   terrain = await loadTerrain((f) => { $('loadText').textContent = `Loading NASA terrain… ${Math.round(f * 100)}%`; });
+  try { fine = await FineTerrain.open(); } catch (e) { fine = null; }
   gpu = new Gpu(renderer, terrain, 1024);
   gpu.terrainUniforms.uExag.value = EXAG;
   const size = terrain.L * 2 / 1000;
