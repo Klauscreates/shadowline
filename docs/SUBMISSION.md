@@ -27,6 +27,8 @@ Shadowline is an interactive 3D map of the Moon's south pole that shows where a 
 - **Site test:** click any point to get a 0–100 score, sunlight %, the longest dark stretch, Earth-in-view %, the longest loss of contact, slope, a 360° horizon view with the Sun and Earth paths, and a timeline you can click to jump in time.
 - **Find best sites:** scans the whole map and pins the three best-scoring, well-separated spots.
 - **Compare:** up to four sites in one side-by-side table, with the best value in each row marked.
+- **Mission and launch slip:** set a mission length and see the same mission arriving on time and 1, 3 and 7 days late, for one site or for all pinned sites. "Find arrival windows" searches the next 60 days for the best arrival dates.
+- **View from the site:** a low camera view across a site toward the Sun or Earth.
 - **Countdowns:** time to the next sunset or sunrise and the next Earthset or Earthrise at each site, from the selected moment.
 - **Add a site:** type coordinates, or pick from a short list of notable south-pole sites (IM-2 target on Mons Mouton, Shackleton ridge, a Chang'e-7 candidate site, the LCROSS impact site and others; coordinates approximate).
 - **Open numbers:** each report shows how its score adds up and exports the full time series as CSV.
@@ -40,6 +42,7 @@ Shadowline is an interactive 3D map of the Moon's south pole that shows where a 
 - Score: 45% sunlight share, 35% Earth-in-view share, 20% gentle slope (full marks under 5°, none over 15°; halved above 15°). The formula is shown in the app.
 
 **How I checked it**
+- Sun and Earth positions agree with NASA JPL Horizons to 0.008° over 396 daily dates.
 - Sun and Earth positions agree with NASA's SPICE toolkit (DE440 ephemeris, Moon mean-Earth frame) to 0.004° across 134 dates over 13 months.
 - The GPU heat maps agree with the separate site-by-site calculation to 0.1% on average (1% worst case) over 60 random points.
 - The best-site search lands on places known for long sunlight, such as the de Gerlache rim and Malapert Massif.
