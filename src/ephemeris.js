@@ -1,3 +1,4 @@
+// Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 // Sun and Earth directions as seen from the Moon, in a Moon-fixed frame.
 // Uses astronomy-engine (MIT) for the Moon's orbit and IAU rotation model.
 import * as A from '../vendor/astronomy.js';

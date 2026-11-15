@@ -1,3 +1,4 @@
+// Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import { moonSky } from './ephemeris.js';

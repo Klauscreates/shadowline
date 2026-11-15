@@ -1,3 +1,4 @@
+// Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 // CPU side of the terrain: loading, map <-> sphere maths, height sampling,
 // horizon profiles and per-site time series.
 import { SUN_RADIUS_RAD } from './ephemeris.js';

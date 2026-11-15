@@ -1,3 +1,4 @@
+// Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 // GPU side: terrain material, live light map and time-accumulated heat maps.
 import * as THREE from 'three';
 
