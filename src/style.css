@@ -77,6 +77,8 @@ button.primary { background: linear-gradient(135deg, #ffd27a, #ffab3d) !importan
 .site-name { font-size: 17px; font-weight: 650; line-height: 1.2; }
 .site-coord { color: var(--dim); font-size: 12px; margin-top: 4px; font-variant-numeric: tabular-nums; }
 .verdict { margin-top: 6px; font-size: 12.5px; line-height: 1.4; }
+.score-key { margin-top: 5px; font-size: 11px; color: var(--dim); line-height: 1.4; }
+.metrics.one .metric .v { font-size: 16px; }
 
 .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
 .metric { border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; background: rgba(255, 255, 255, 0.03); }

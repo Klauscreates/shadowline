@@ -1,13 +1,13 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
-import { moonSky, loadHorizons, horizonsRange } from './ephemeris.js?v=26';
-import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N, TilePyramid } from './terrain.js?v=26';
-import { Gpu } from './gpu.js?v=26';
-import { LocalPatch, gridSurface } from './patch.js?v=26';
+import { moonSky, loadHorizons, horizonsRange } from './ephemeris.js?v=28';
+import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N, TilePyramid } from './terrain.js?v=28';
+import { Gpu } from './gpu.js?v=28';
+import { LocalPatch, gridSurface } from './patch.js?v=28';
 
 // If the browser kept an older copy of the page next to this newer script, reload once to get a matching set.
-const BUILD = '26';
+const BUILD = '28';
 if (document.querySelector('meta[name="build"]')?.content !== BUILD) {
   if (!/[?&]fresh=/.test(location.search)) location.replace(location.pathname + '?fresh=' + Date.now());
   throw new Error('This page is out of date. Please reload.');
@@ -485,6 +485,22 @@ function dataSourceText() {
   if (state.start >= rng[0] && end <= rng[1]) return 'NASA JPL Horizons, hourly';
   return 'NASA JPL Horizons where available (Nov 2026 to Dec 2027), computed in the browser outside that';
 }
+const scoreBand = (s) => (s >= 75 ? { name: 'Strong', col: '#58e0a0' } : s >= 50 ? { name: 'Mixed', col: '#ffc65a' } : { name: 'Weak', col: '#ff6b6b' });
+/** Steepest ground and share of steep ground within 1 km of a site, on the terrain grid. */
+function hazardNear(x, y) {
+  const R1 = 1000, d = terrain.px;
+  let max = 0, steep = 0, n = 0;
+  for (let dy = -R1; dy <= R1; dy += d) {
+    for (let dx = -R1; dx <= R1; dx += d) {
+      if (dx * dx + dy * dy > R1 * R1 || !terrain.inside(x + dx, y + dy)) continue;
+      const s = terrain.slope(x + dx, y + dy);
+      if (s > max) max = s;
+      if (s > 15) steep++;
+      n++;
+    }
+  }
+  return { max, share: n ? steep / n : 0 };
+}
 function scoreParts(r) {
   const slopeSafe = Math.min(Math.max((15 - r.slope) / 10, 0), 1);
   return { sun: 45 * r.sunPct, earth: 35 * r.earthPct, slope: 20 * slopeSafe, slopeSafe, halved: r.slope > 15 };
@@ -497,7 +513,7 @@ function scoreTable(r) {
     <tr><td>Gentle slope</td><td>${s.slopeSafe.toFixed(2)} × 20</td><td>${s.slope.toFixed(1)}</td></tr>
     ${s.halved ? '<tr class="pen"><td>Steeper than 15°</td><td>total × 0.5</td><td></td></tr>' : ''}
     <tr class="tot"><td>Score</td><td>out of 100</td><td>${r.score}</td></tr></table>
-    <div class="note">Example weights, not a NASA standard: power counts most, then Earth contact, then safe ground. Use the separate numbers above if your mission weighs them differently.</div>`;
+    <div class="note">The score is sunlight share × 45, plus Earth-contact share × 35, plus up to 20 for gentle ground. So a site with Earth in view half the time earns 17.5 of the 35 contact points, and cannot score above 82.5. These are example weights, not a NASA standard: power counts most, then Earth contact, then safe ground. Use the separate numbers above if your mission weighs them differently.</div>`;
 }
 function siteSummary(p) {
   const r = p.report;
@@ -583,13 +599,14 @@ function renderPanel() {
     <div class="site-head">
       <div class="score-ring">
         <svg viewBox="0 0 82 82"><circle cx="41" cy="41" r="34" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="7"/>
-        <circle cx="41" cy="41" r="34" fill="none" stroke="${p.color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(circ * r.score / 100).toFixed(1)} ${circ.toFixed(1)}"/></svg>
-        <div class="num"><div>${r.score}<small>SCORE</small></div></div>
+        <circle cx="41" cy="41" r="34" fill="none" stroke="${scoreBand(r.score).col}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(circ * r.score / 100).toFixed(1)} ${circ.toFixed(1)}"/></svg>
+        <div class="num"><div>${r.score}<small style="color:${scoreBand(r.score).col}">${scoreBand(r.score).name.toUpperCase()}</small></div></div>
       </div>
       <div>
         <div class="site-name">Site ${p.letter}${siteLabel(p)}</div>
         <div class="site-coord"><span class="res ${r.terrain.hi ? 'hi' : ''}" title="${r.terrain.note}">${r.terrain.label} terrain</span>${Math.abs(r.lat).toFixed(3)}°${r.lat < 0 ? 'S' : 'N'} · ${Math.abs(r.lon).toFixed(2)}°${r.lon < 0 ? 'W' : 'E'}</div>
         <div class="verdict">${verdict(r)}</div>
+        <div class="score-key">Score out of 100: <span style="color:#58e0a0">75+ strong</span> · <span style="color:#ffc65a">50 to 74 mixed</span> · <span style="color:#ff6b6b">under 50 weak</span></div>
       </div>
     </div>
     <div class="block-title">At the selected time</div>
@@ -609,7 +626,10 @@ function renderPanel() {
       <div class="metrics">
         <div class="metric"><div class="k">Slope</div><div class="v" style="color:${r.slope > 15 ? 'var(--bad)' : r.slope > 10 ? 'var(--sun)' : 'var(--good)'}">${r.slope.toFixed(1)}°</div><div class="s">over a ${Math.round(r.slopeBaseM / 10) * 10} m baseline</div></div>
         <div class="metric"><div class="k">Elevation</div><div class="v">${Math.round(r.elevation).toLocaleString()} m</div><div class="s">vs 1,737.4 km sphere</div></div>
-      </div></div>
+      </div>
+      ${(() => { const hz = hazardNear(r.x, r.y); const col = hz.max > 15 ? 'var(--bad)' : hz.max > 10 ? 'var(--sun)' : 'var(--good)';
+        return `<div class="metrics one"><div class="metric"><div class="k">Hazards within 1 km</div><div class="v" style="color:${col}">Steepest ground ${hz.max.toFixed(1)}°</div><div class="s">${hz.share > 0 ? pct(hz.share) + ' of the area is steeper than 15°, such as crater walls. ' : 'No ground steeper than 15° found. '}The Slope layer maps this. Rocks and craters under 250 m are not seen.</div></div></div>`; })()}
+      </div>
     <div class="step"><div class="step-h"><i>4</i><b>Both at once</b><span>powered and in contact</span></div>
       <div class="metrics one">
         <div class="metric"><div class="k">Sunlight and Earth contact together</div><div class="v">${pct1(r.bothPct)}</div><div class="s">of the window</div></div>
