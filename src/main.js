@@ -1,13 +1,13 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
-import { moonSky, loadHorizons, horizonsRange } from './ephemeris.js?v=28';
-import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N, TilePyramid } from './terrain.js?v=28';
-import { Gpu } from './gpu.js?v=28';
-import { LocalPatch, gridSurface } from './patch.js?v=28';
+import { moonSky, loadHorizons, horizonsRange } from './ephemeris.js?v=40';
+import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N, TilePyramid } from './terrain.js?v=40';
+import { Gpu } from './gpu.js?v=40';
+import { LocalPatch, gridSurface } from './patch.js?v=40';
 
 // If the browser kept an older copy of the page next to this newer script, reload once to get a matching set.
-const BUILD = '28';
+const BUILD = '40';
 if (document.querySelector('meta[name="build"]')?.content !== BUILD) {
   if (!/[?&]fresh=/.test(location.search)) location.replace(location.pathname + '?fresh=' + Date.now());
   throw new Error('This page is out of date. Please reload.');
@@ -209,7 +209,7 @@ const state = {
   playing: false,
   speed: 1,          // days per second
   layer: 0,
-  samples: [], stepHours: 1,
+  samples: [], stepHours: 1, stepMs: 3600000,
   sky: null,
   pins: [], selected: -1, nextLetter: 0,
   accumList: [], accumIdx: 0, heat: null,
@@ -239,10 +239,12 @@ const PRESETS = [
 
 function rebuildWindow() {
   const span = state.spanDays;
-  state.stepHours = span <= 31 ? 1 : span <= 100 ? 2 : 6;
-  const n = Math.round(span * 24 / state.stepHours);
+  // 10-minute steps for one lunar day, 1 h for 3 months, 6 h for a year (each a whole number of milliseconds)
+  state.stepMs = span <= 31 ? 600000 : span <= 100 ? 3600000 : 21600000;
+  state.stepHours = state.stepMs / 3600000;
+  const n = Math.round(span * DAY / state.stepMs);
   state.samples = [];
-  for (let i = 0; i < n; i++) state.samples.push(sampleAt(state.start + i * state.stepHours * 3600000));
+  for (let i = 0; i < n; i++) state.samples.push(sampleAt(state.start + i * state.stepMs));
   // heat maps use at most ~300 evenly spaced samples
   const k = Math.max(1, Math.ceil(n / 300));
   state.accumList = state.samples.filter((_, i) => i % k === 0);
@@ -331,7 +333,10 @@ function removePin(i) {
 }
 
 // ---------- panel ----------
-const fmtDur = (h) => (h >= 48 ? (h / 24).toFixed(1) + ' d' : Math.round(h) + ' h');
+// Durations. Under 10 hours they are shown to the 10 minutes the short steps resolve; hourly or 6-hourly windows only produce whole steps.
+const hm = (h) => { const m = Math.round(h * 60); return (m >= 60 ? Math.floor(m / 60) + ' h' : '') + (m % 60 ? (m >= 60 ? ' ' : '') + (m % 60) + ' min' : m ? '' : '0 h'); };
+const fmtDur = (h) => (h >= 48 ? (h / 24).toFixed(1) + ' d' : h < 10 && Math.abs(h - Math.round(h)) > 1e-6 ? hm(h) : Math.round(h) + ' h');
+const stepText = () => (state.stepHours < 1 ? Math.round(state.stepHours * 60) + ' min' : state.stepHours + ' h');
 const fmtLat = (v) => Math.abs(v).toFixed(2) + '°' + (v < 0 ? 'S' : 'N');
 const fmtLon = (v) => Math.abs(v).toFixed(1) + '°' + (v < 0 ? 'W' : 'E');
 const pct = (v) => Math.round(v * 100) + '%';
@@ -342,12 +347,20 @@ const windowName = () => (state.spanDays >= 100 ? '1 year' : state.spanDays > 31
 
 const siteLabel = (p) => (p.name ? ' · ' + p.name : p.near ? ' · near ' + p.near : '');
 const SUN_R_DEG = 0.2666;
-const fmtIn = (h) => (h < 1 ? 'under 1 h' : h >= 48 ? (h / 24).toFixed(1) + ' days' : Math.round(h) + ' h');
+/** A countdown, never finer than the step the window is sampled at. */
+function fmtIn(h) {
+  const st = state.stepHours;
+  if (h >= 48) return (h / 24).toFixed(1) + ' days';
+  if (st >= 1) return h < 1 ? 'under 1 h' : Math.round(h) + ' h';
+  if (h < st) return 'under ' + Math.round(st * 60) + ' min';
+  if (h >= 10) return Math.round(h) + ' h';
+  return hm(Math.round(h / st) * st);
+}
 
 /** Time from the selected moment to the next change of Sun / Earth visibility at a site. */
 function nextEvents(r, sunOn, earthOn) {
   const S = r.series, n = S.sun.length;
-  const f = (state.t - state.start) / (state.stepHours * 3600000);
+  const f = (state.t - state.start) / state.stepMs;
   const i0 = Math.min(n - 1, Math.max(0, Math.floor(f)));
   const scan = (cur, on) => {
     for (let j = i0 + 1; j < n; j++) if (on(j) !== cur) return (j - f) * state.stepHours;
@@ -362,31 +375,31 @@ const clearText = (el, hor) => { const d = (el - hor) / DEG; return `${Math.abs(
 // ---------- mission scenario: arrival date, mission length, launch slips ----------
 const SLIPS = [0, 1, 3, 7];
 const SEARCH_DAYS = 60;
+const MIS_STEP_MS = 600000, MIS_PER_H = 3600000 / MIS_STEP_MS;   // the mission tables step every 10 minutes
 let ephCache = { start: 0, list: [] };
-function ephHours(n) {
+function ephSlots(n) {
   if (ephCache.start !== state.start) ephCache = { start: state.start, list: [] };
-  for (let i = ephCache.list.length; i < n; i++) ephCache.list.push(sampleAt(state.start + i * 3600000));
+  for (let i = ephCache.list.length; i < n; i++) ephCache.list.push(sampleAt(state.start + i * MIS_STEP_MS));
   return ephCache.list;
 }
-function pinHours(p, n) {
-  if (!p.mis || p.mis.start !== state.start) p.mis = { start: state.start, sun: [], earth: [] };
-  const L = ephHours(n);
-  for (let i = p.mis.sun.length; i < n; i++) {
+/** Sunlight and Earth contact at a site every 10 minutes from the arrival date, with running totals. */
+function pinSlots(p, n) {
+  if (!p.mis || p.mis.start !== state.start) p.mis = { start: state.start, n: 0, sun: [], cs: [0], ce: [0], cb: [0] };
+  const m = p.mis, L = ephSlots(n);
+  for (let i = m.n; i < n; i++) {
     const s = skyAt(p.report.profile, L[i]);
-    p.mis.sun.push(s.sunFrac); p.mis.earth.push(s.earthVis);
+    m.sun.push(s.sunFrac);
+    m.cs.push(m.cs[i] + s.sunFrac); m.ce.push(m.ce[i] + s.earthVis); m.cb.push(m.cb[i] + s.sunFrac * s.earthVis);
   }
-  return p.mis;
+  if (n > m.n) m.n = n;
+  return m;
 }
-/** Sunlight / Earth contact for one site over a mission starting offH hours after the arrival date. */
-function missionStats(p, offH, lenH) {
-  const mm = pinHours(p, offH + lenH);
-  let su = 0, ea = 0, bo = 0, run = 0, best = 0;
-  for (let i = offH; i < offH + lenH; i++) {
-    const a = mm.sun[i], b = mm.earth[i];
-    su += a; ea += b; bo += a * b;
-    if (a < 0.05) { run++; if (run > best) best = run; } else run = 0;
-  }
-  return { sun: su / lenH, earth: ea / lenH, both: bo / lenH, darkH: best };
+/** Sunlight / Earth contact for one site over a mission starting offH hours after the arrival date. `dark` = also find the longest dark stretch. */
+function missionStats(p, offH, lenH, dark = true) {
+  const a = Math.round(offH * MIS_PER_H), n = Math.round(lenH * MIS_PER_H), mm = pinSlots(p, a + n);
+  let run = 0, best = 0;
+  if (dark) for (let i = a; i < a + n; i++) { if (mm.sun[i] < 0.05) { run++; if (run > best) best = run; } else run = 0; }
+  return { sun: (mm.cs[a + n] - mm.cs[a]) / n, earth: (mm.ce[a + n] - mm.ce[a]) / n, both: (mm.cb[a + n] - mm.cb[a]) / n, darkH: best / MIS_PER_H };
 }
 const missionPins = () => (state.compare ? state.pins : [state.pins[state.selected]]);
 const windowsKey = () => state.start + '|' + state.missionDays + '|' + missionPins().map((p) => p.letter).join('');
@@ -394,7 +407,7 @@ function findWindows() {
   const P = missionPins(), lenH = Math.round(state.missionDays * 24), res = [];
   for (let d = 0; d < SEARCH_DAYS; d++) {
     let su = 0, ea = 0, bo = 0;
-    for (const p of P) { const s = missionStats(p, d * 24, lenH); su += s.sun; ea += s.earth; bo += s.both; }
+    for (const p of P) { const s = missionStats(p, d * 24, lenH, false); su += s.sun; ea += s.earth; bo += s.both; }
     res.push({ d, sun: su / P.length, earth: ea / P.length, both: bo / P.length });
   }
   const top = [];
@@ -432,7 +445,7 @@ function missionHtml() {
   return `<div class="block-title">Mission and launch slip <span>${dayLabel(state.start)} → ${dayLabel(state.start + state.missionDays * DAY)} if on time</span></div>
     <div class="mis-row"><label>Mission length <input id="misDays" type="number" inputmode="numeric" min="1" max="60" step="1" value="${state.missionDays}"> days</label><button data-act="windows">Find arrival windows</button></div>
     ${table}
-    <div class="note">Each row is the same ${state.missionDays}-day mission starting that many days late. The arrival date is the Start date in the time bar.</div>
+    <div class="note">Each row is the same ${state.missionDays}-day mission starting that many days late, stepped every 10 minutes. The arrival date is the Start date in the time bar.</div>
     ${win}`;
 }
 
@@ -482,7 +495,7 @@ function dataSourceText() {
   const rng = horizonsRange();
   if (!rng) return 'computed in the browser (checked against NASA JPL Horizons)';
   const end = state.start + state.spanDays * DAY;
-  if (state.start >= rng[0] && end <= rng[1]) return 'NASA JPL Horizons, hourly';
+  if (state.start >= rng[0] && end <= rng[1]) return state.stepHours < 1 ? 'NASA JPL Horizons hourly table, interpolated to each 10-minute step' : 'NASA JPL Horizons, hourly table';
   return 'NASA JPL Horizons where available (Nov 2026 to Dec 2027), computed in the browser outside that';
 }
 const scoreBand = (s) => (s >= 75 ? { name: 'Strong', col: '#58e0a0' } : s >= 50 ? { name: 'Mixed', col: '#ffc65a' } : { name: 'Weak', col: '#ff6b6b' });
@@ -520,7 +533,7 @@ function siteSummary(p) {
   return [
     `Shadowline site ${p.letter}${siteLabel(p)}`,
     `Latitude ${r.lat.toFixed(4)} deg, longitude ${r.lon.toFixed(4)} deg E, elevation ${Math.round(r.elevation)} m`,
-    `Window: ${new Date(state.start).toISOString().slice(0, 10)} UTC + ${windowName()}, step ${state.stepHours} h`,
+    `Window: ${new Date(state.start).toISOString().slice(0, 10)} UTC + ${windowName()}, step ${stepText()}`,
     `Sunlit ${pct1(r.sunPct)} of window, longest dark stretch ${fmtDur(r.longestDarkH)}`,
     `Earth in view ${pct1(r.earthPct)} of window, longest loss of contact ${fmtDur(r.longestMuteH)}`,
     `Sunlight and Earth contact together ${pct1(r.bothPct)}`,
@@ -543,7 +556,8 @@ function siteCsv(p) {
     `# earth_visible_fraction,${r.earthPct.toFixed(4)}`,
     `# both_fraction,${r.bothPct.toFixed(4)}`,
     `# score,${r.score}`,
-    `# step_hours,${state.stepHours}`,
+    `# step_hours,${+state.stepHours.toFixed(6)}`,
+    `# step_minutes,${Math.round(state.stepHours * 60)}`,
     `# terrain,${r.terrain.products.replace(/,/g, ';')}`,
     `# slope_baseline_m,${Math.round(r.slopeBaseM)}`,
     '# observer_height_m,2',
@@ -644,7 +658,7 @@ function renderPanel() {
     <div class="block-title">How the score adds up</div>
     ${scoreTable(r)}
     <div class="export"><button data-act="csv">Download data (CSV)</button><button data-act="copy">Copy summary</button></div>
-    <div class="note">Window: ${new Date(state.start).toISOString().slice(0, 10)} + ${windowName()}, sampled every ${state.stepHours} h. Terrain: ${r.terrain.note}${!p.fine && pyramid ? ' (loading finer grids…)' : ''}; antenna 2 m above ground. Sun and Earth positions: ${dataSourceText()}.</div>`;
+    <div class="note">Window: ${new Date(state.start).toISOString().slice(0, 10)} + ${windowName()}, sampled every ${stepText()}. Terrain: ${r.terrain.note}${!p.fine && pyramid ? ' (loading finer grids…)' : ''}; antenna 2 m above ground. Sun and Earth positions: ${dataSourceText()}.</div>`;
   updateViewOffset();
   if (panel.classList.contains('mini')) { chartCache = null; return; }
   buildCharts();
