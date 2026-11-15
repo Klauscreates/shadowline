@@ -1,13 +1,14 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
-import { moonSky, loadHorizons, horizonsRange } from './ephemeris.js?v=40';
-import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N, TilePyramid } from './terrain.js?v=40';
-import { Gpu } from './gpu.js?v=40';
-import { LocalPatch, gridSurface } from './patch.js?v=40';
+import { moonSky, loadHorizons, horizonsRange } from './ephemeris.js?v=41';
+import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N, TilePyramid } from './terrain.js?v=41';
+import { Gpu } from './gpu.js?v=41';
+import { LocalPatch, gridSurface } from './patch.js?v=41';
+import { SiteTerrain, GlobalGrid, analyseLocal } from './site.js?v=41';
 
 // If the browser kept an older copy of the page next to this newer script, reload once to get a matching set.
-const BUILD = '40';
+const BUILD = '41';
 if (document.querySelector('meta[name="build"]')?.content !== BUILD) {
   if (!/[?&]fresh=/.test(location.search)) location.replace(location.pathname + '?fresh=' + Date.now());
   throw new Error('This page is out of date. Please reload.');
@@ -237,6 +238,14 @@ const PRESETS = [
   ['Shackleton floor', 'Permanent shadow, for contrast', -89.67, 129.78],
 ];
 
+// Named sites beyond the polar map. Each has its own terrain grids in public/data/sites (tools/build_site.py).
+// Coordinates: Odysseus from NASA / LROC ("Odysseus came to rest at 80.13 S, 1.44 E, 2579 m elevation", LROC image post 1360);
+// Apollo 17 lunar module from NASA NSSDC "Apollo Landing Site Coordinates" (Wagner et al., Icarus 283, 2017).
+const OFFSITES = [
+  { id: 'im1', name: 'Odysseus / IM-1', note: 'Intuitive Machines, landed Feb 2024, near Malapert A', lat: -80.13, lon: 1.44, grid: '60 m grid' },
+  { id: 'apollo17', name: 'Apollo 17', note: 'Taurus-Littrow valley, Dec 1972', lat: 20.1911, lon: 30.7723, grid: '60 m grid' },
+];
+
 function rebuildWindow() {
   const span = state.spanDays;
   // 10-minute steps for one lunar day, 1 h for 3 months, 6 h for a year (each a whole number of milliseconds)
@@ -253,7 +262,7 @@ function rebuildWindow() {
   gpu.terrainUniforms.uHeatMax.value.set(1, 1, 1);
   gpu.resetAccum();
   state.t = Math.min(Math.max(state.t, state.start), state.start + span * DAY - 1);
-  for (const p of state.pins) p.report = analyseSite(terrain, p.x, p.y, state.samples, state.stepHours, p.fine ? pyramid : null);
+  for (const p of state.pins) p.report = analysePin(p);
   // show the window's start and end under the time slider
   $('winStart').textContent = dayLabelY(state.start);
   $('winEnd').textContent = dayLabelY(state.start + span * DAY);
@@ -263,6 +272,10 @@ function rebuildWindow() {
 }
 
 // ---------- pins ----------
+/** A pin on the polar map is analysed from the map and its tile pyramid; a site beyond the map from its own terrain. */
+function analysePin(p) {
+  return p.site ? analyseLocal(p.site, state.samples, state.stepHours) : analyseSite(terrain, p.x, p.y, state.samples, state.stepHours, p.fine ? pyramid : null);
+}
 function nearestFeature(x, y) {
   let best = null, bd = 30000;
   for (const f of FEATURES) {
@@ -287,6 +300,7 @@ async function refinePin(pin) {
 }
 /** Put a pin's marker on the drawn surface (depends on the vertical scale in use). */
 function placePin(pin) {
+  if (!pin.group) return;
   pin.group.position.copy(mapToWorld(pin.x, pin.y));
   sizePins();
 }
@@ -294,6 +308,7 @@ function placePin(pin) {
 function sizePins() {
   const s = Math.min(1, Math.max(0.06, camera.position.distanceTo(controls.target) / 170));
   for (const p of state.pins) {
+    if (!p.group) continue;
     p.group.scale.setScalar(s);
     p.top.copy(p.group.position); p.top.y += 46 * s;
   }
@@ -323,9 +338,23 @@ function addPin(x, y, select = true, name = null) {
   renderPanel();
   return pin;
 }
+/** A site beyond the polar map: it has a report, a horizon view and a local map, but no marker on the 3D map. */
+function addOffPin(site, name) {
+  if (state.pins.length >= PIN_COLORS.length) removePin(0);
+  const used = new Set(state.pins.map((p) => p.color));
+  const color = PIN_COLORS.find((c) => !used.has(c));
+  const letter = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[state.nextLetter++ % 26];
+  const pin = { x: NaN, y: NaN, site, fine: true, color, letter, name, group: null, ring: null, top: new THREE.Vector3(), label: null, near: null };
+  pin.report = analysePin(pin);
+  state.pins.push(pin);
+  state.selected = state.pins.length - 1; state.compare = false;
+  $('hint').classList.add('gone');
+  renderPanel();
+  return pin;
+}
 function removePin(i) {
   const p = state.pins[i];
-  scene.remove(p.group); removeLabel(p.label);
+  if (p.group) { scene.remove(p.group); removeLabel(p.label); }
   state.pins.splice(i, 1);
   state.selected = Math.min(state.selected, state.pins.length - 1);
   if (state.selected < 0 && state.pins.length) state.selected = 0;
@@ -475,7 +504,7 @@ function compareHtml() {
     <tr><th>Slope baseline</th>${R.map((r) => `<td>${Math.round(r.slopeBaseM / 10) * 10} m</td>`).join('')}</tr>
     <tr><th>Terrain grid</th>${R.map((r) => `<td>${r.terrain.label}</td>`).join('')}</tr>
     ${row('Elevation', R.map((r) => r.elevation), (v) => Math.round(v).toLocaleString() + ' m', null)}
-    ${row('Latitude', R.map((r) => r.lat), (v) => Math.abs(v).toFixed(2) + '°S', null)}
+    ${row('Latitude', R.map((r) => r.lat), (v) => Math.abs(v).toFixed(2) + '°' + (v < 0 ? 'S' : 'N'), null)}
     ${row('Longitude', R.map((r) => r.lon), (v) => Math.abs(v).toFixed(1) + '°' + (v < 0 ? 'W' : 'E'), null)}
     </tbody></table></div>
     ${missionHtml()}
@@ -625,7 +654,11 @@ function renderPanel() {
     </div>
     <div class="block-title">At the selected time</div>
     <div class="now-row"><div class="now-chip sun" id="nowSun"></div><div class="now-chip earth" id="nowEarth"></div></div>
-    <div class="look"><button data-act="hview">Horizon view (eye level)</button><button data-act="lookSun">3D toward Sun</button><button data-act="lookEarth">3D toward Earth</button></div>
+    <div class="look"><button data-act="hview">Horizon view (eye level)</button>${p.site ? '' : '<button data-act="lookSun">3D toward Sun</button><button data-act="lookEarth">3D toward Earth</button>'}</div>
+    ${p.site ? `<div class="offmap ${r.terrain.coarse ? 'coarse' : ''}"><b>${r.terrain.coarse ? 'Coarse terrain: treat these numbers as rough.' : 'Beyond the 3D south-pole map.'}</b> This site is analysed from its own terrain: ${r.terrain.note}.</div>
+    <div class="block-title">Terrain around the site <span>${(p.site.levels.length ? 20 : 300)} km across, north up</span></div>
+    <canvas class="chart lmap" id="lmap"></canvas>
+    <div class="key"><span><i style="background:${p.color}"></i>Site</span>${p.site.levels.length ? '<span><i style="background:#e0524d"></i>Steeper than 15°</span>' : ''}<span><i style="background:var(--sun)"></i>Toward the Sun</span><span class="dimkey">relief shading, no cast shadows</span></div>` : ''}
     <div class="step"><div class="step-h"><i>1</i><b>Power</b><span>sunlight over the window</span></div>
       <div class="metrics">
         <div class="metric sun"><div class="k">Sunlit</div><div class="v">${pct1(r.sunPct)}</div><div class="s">of the window</div></div>
@@ -641,8 +674,10 @@ function renderPanel() {
         <div class="metric"><div class="k">Slope</div><div class="v" style="color:${r.slope > 15 ? 'var(--bad)' : r.slope > 10 ? 'var(--sun)' : 'var(--good)'}">${r.slope.toFixed(1)}°</div><div class="s">over a ${Math.round(r.slopeBaseM / 10) * 10} m baseline</div></div>
         <div class="metric"><div class="k">Elevation</div><div class="v">${Math.round(r.elevation).toLocaleString()} m</div><div class="s">vs 1,737.4 km sphere</div></div>
       </div>
-      ${(() => { const hz = hazardNear(r.x, r.y); const col = hz.max > 15 ? 'var(--bad)' : hz.max > 10 ? 'var(--sun)' : 'var(--good)';
-        return `<div class="metrics one"><div class="metric"><div class="k">Hazards within 1 km</div><div class="v" style="color:${col}">Steepest ground ${hz.max.toFixed(1)}°</div><div class="s">${hz.share > 0 ? pct(hz.share) + ' of the area is steeper than 15°, such as crater walls. ' : 'No ground steeper than 15° found. '}The Slope layer maps this. Rocks and craters under 250 m are not seen.</div></div></div>`; })()}
+      ${(() => { const hz = p.site ? p.site.hazard() : hazardNear(r.x, r.y);
+        if (!hz) return `<div class="metrics one"><div class="metric"><div class="k">Hazards within 1 km</div><div class="v" style="color:var(--dim)">Not assessed</div><div class="s">The ${r.terrain.label} grid used here is far too coarse to show crater walls, boulders or local slopes.</div></div></div>`;
+        const col = hz.max > 15 ? 'var(--bad)' : hz.max > 10 ? 'var(--sun)' : 'var(--good)';
+        return `<div class="metrics one"><div class="metric"><div class="k">Hazards within 1 km</div><div class="v" style="color:${col}">Steepest ground ${hz.max.toFixed(1)}°</div><div class="s">${hz.share > 0 ? pct(hz.share) + ' of the area is steeper than 15°, such as crater walls. ' : 'No ground steeper than 15° found. '}${p.site ? 'Measured on the ' + r.terrain.label + ' grid; the map above marks it in red. Rocks and craters under ' + r.terrain.label + ' are not seen.' : 'The Slope layer maps this. Rocks and craters under 250 m are not seen.'}</div></div></div>`; })()}
       </div>
     <div class="step"><div class="step-h"><i>4</i><b>Both at once</b><span>powered and in contact</span></div>
       <div class="metrics one">
@@ -703,7 +738,8 @@ function buildCharts() {
   let maxEl = 4 * DEG;
   for (let i = 0; i < n; i++) maxEl = Math.max(maxEl, S.earthEl[i]);
   for (let k = 0; k < HORIZON_N; k++) maxEl = Math.max(maxEl, r.profile.horizon[k]);
-  const lo = -3 * DEG, hi = Math.min(maxEl + 1.5 * DEG, 30 * DEG);
+  if (p.site) for (let i = 0; i < n; i++) maxEl = Math.max(maxEl, S.sunEl[i]);      // away from the poles the Sun and Earth climb high
+  const lo = -3 * DEG, hi = Math.min(maxEl + 1.5 * DEG, (p.site ? 90 : 30) * DEG);
   const X = (az) => { let a = az; while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return (a / (2 * Math.PI) + 0.5) * hc.w; };
   const Y = (el) => hc.h - 16 - (el - lo) / (hi - lo) * (hc.h - 22);
   const g = hb.g;
@@ -734,11 +770,55 @@ function buildCharts() {
   chartCache = { strip: sb.c, horizon: hb.c, x0, ww, X, Y };
 }
 
+/** Shaded-relief map of the ground around a site that is not on the polar map. Drawing only. */
+function drawLocalMap(p, now) {
+  const c = $('lmap'); if (!c || !p.site) return;
+  const st = p.site, N = 220, E = st.levels.length ? 10000 : 150000;
+  if (!p.lmap) {
+    const h = new Float32Array(N * N), steep = new Uint8Array(N * N), d = 2 * E / N;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const x = -E + (i + 0.5) * d, y = -E + (j + 0.5) * d;
+      h[j * N + i] = st.heightLocal(x, y);
+      steep[j * N + i] = st.levels.length && st.slopeLocal(x, y) > 15 ? 1 : 0;
+    }
+    p.lmap = { h, steep, d, img: document.createElement('canvas') };
+    p.lmap.img.width = p.lmap.img.height = N;
+  }
+  const M = p.lmap, lx = Math.sin(now.sunAz), ly = Math.cos(now.sunAz), lz = Math.tan(25 * DEG);   // lit from the Sun's side, 25 deg up
+  const ll = Math.hypot(1, lz), key = Math.round(now.sunAz / DEG / 2);
+  if (M.key !== key) {
+    M.key = key;
+    const g = M.img.getContext('2d'), im = g.createImageData(N, N), o = im.data, h = M.h;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const i0 = Math.max(i - 1, 0), i1 = Math.min(i + 1, N - 1), j0 = Math.max(j - 1, 0), j1 = Math.min(j + 1, N - 1);
+      const gx = (h[j * N + i1] - h[j * N + i0]) / ((i1 - i0) * M.d), gy = (h[j1 * N + i] - h[j0 * N + i]) / ((j1 - j0) * M.d);
+      const sh = Math.max(0, (-gx * lx - gy * ly + lz) / (Math.hypot(gx, gy, 1) * ll));
+      const v = 30 + 215 * Math.pow(sh, 0.8), k = ((N - 1 - j) * N + i) * 4, red = M.steep[j * N + i];
+      o[k] = red ? v * 0.55 + 105 : v; o[k + 1] = red ? v * 0.5 : v; o[k + 2] = red ? v * 0.5 : v * 1.03; o[k + 3] = 255;
+    }
+    g.putImageData(im, 0, 0);
+  }
+  const dpr = Math.min(devicePixelRatio, 2), w = c.clientWidth; if (!w) return;
+  if (c.width !== Math.round(w * dpr)) { c.width = c.height = Math.round(w * dpr); c.style.height = w + 'px'; }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.imageSmoothingEnabled = true; g.drawImage(M.img, 0, 0, w, w);
+  // Sun direction, site marker, scale bar
+  g.strokeStyle = '#ffc65a'; g.lineWidth = 2; g.beginPath(); g.moveTo(w / 2 + lx * 14, w / 2 - ly * 14); g.lineTo(w / 2 + lx * 40, w / 2 - ly * 40); g.stroke();
+  g.beginPath(); g.arc(w / 2 + lx * 44, w / 2 - ly * 44, 4, 0, 7); g.fillStyle = '#ffc65a'; g.fill();
+  g.beginPath(); g.arc(w / 2, w / 2, 6, 0, 7); g.lineWidth = 2.5; g.strokeStyle = p.color; g.stroke();
+  g.beginPath(); g.arc(w / 2, w / 2, 1.6, 0, 7); g.fillStyle = p.color; g.fill();
+  const km = E / 5000, bar = (km * 1000) / (2 * E) * w;
+  g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(8, w - 26, bar + 12, 20);
+  g.fillStyle = '#fff'; g.fillRect(14, w - 12, bar, 2); g.font = '10.5px system-ui'; g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillText(km + ' km', 14, w - 15);
+  g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(w - 26, 6, 20, 18); g.fillStyle = '#fff'; g.textAlign = 'center'; g.fillText('N', w - 16, 19);
+}
+
 function drawCharts() {
   drawHview();
   if (state.compare) { drawCompare(); return; }
   const p = state.pins[state.selected]; if (!p || !chartCache || !chartCache.strip.width || !chartCache.horizon.width) return;
   const now = skyAt(p.report.profile, state.sky);
+  drawLocalMap(p, now);
   const f = (state.t - state.start) / (state.spanDays * DAY);
   const strip = $('strip'), hor = $('horizon'); if (!strip || !hor) return;
   let g = strip.getContext('2d'); const dpr = Math.min(devicePixelRatio, 2);
@@ -934,7 +1014,7 @@ let tween = null;
 // ---------- eye-level horizon view ----------
 // A first-person panorama drawn from the same 720-direction terrain horizon the numbers use,
 // so what is seen here is exactly what the site test measured. Equal angular scale on both axes.
-const hv = { open: false, az: 0, fov: 70, track: 'sun' };
+const hv = { open: false, az: 0, fov: 70, track: 'sun', up: 0 };   // up = degrees the view is raised above its resting position
 const EARTH_R_M = 6371000;
 function hvHorizon(profile, az) {
   let f = (az / (2 * Math.PI)) * HORIZON_N;
@@ -943,7 +1023,7 @@ function hvHorizon(profile, az) {
   return profile.horizon[i] * (1 - a) + profile.horizon[(i + 1) % HORIZON_N] * a;
 }
 function openHview(track) {
-  hv.open = true; hv.track = track; hv.fov = innerWidth < 900 ? 50 : 70;
+  hv.open = true; hv.track = track; hv.fov = innerWidth < 900 ? 50 : 70; hv.up = 0;
   $('hview').hidden = false;
   if (innerWidth < 900 && !$('panel').classList.contains('mini')) { $('panel').classList.add('mini'); $('panelToggle').textContent = '▴'; }
   drawHview();
@@ -959,7 +1039,10 @@ function drawHview() {
   const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const prof = p.report.profile, now = skyAt(prof, state.sky);
   if (hv.track === 'sun') hv.az = now.sunAz; else if (hv.track === 'earth') hv.az = now.earthAz;
-  const ppd = w / hv.fov, span = h / ppd, elLo = -span * 0.36;      // pixels per degree; degrees at the bottom edge
+  const ppd = w / hv.fov, span = h / ppd;                            // pixels per degree; degrees shown top to bottom
+  // while tracking, raise the view just enough to keep a high Sun or Earth on screen (they stay low at the poles)
+  if (hv.track) hv.up = Math.max(0, (hv.track === 'sun' ? now.sunEl : now.earthEl) / DEG - span * 0.44);
+  const elLo = -span * 0.36 + hv.up;                                 // degrees at the bottom edge
   const dAz = (az) => { const d = (az - hv.az) / DEG; return ((d + 540) % 360) - 180; };
   const X = (az) => w / 2 + dAz(az) * ppd, Y = (elRad) => h - (elRad / DEG - elLo) * ppd;
 
@@ -1048,8 +1131,14 @@ $('hview').addEventListener('click', (e) => {
 });
 {
   const cv = $('hvCanvas'); let drag = null;
-  cv.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, az: hv.az }; cv.setPointerCapture(e.pointerId); });
-  cv.addEventListener('pointermove', (e) => { if (!drag) return; hv.track = null; hv.az = drag.az - ((e.clientX - drag.x) / (cv.clientWidth / hv.fov)) * DEG; drawHview(); });
+  cv.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, az: hv.az, up: hv.up }; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const ppd = cv.clientWidth / hv.fov;
+    hv.track = null; hv.az = drag.az - ((e.clientX - drag.x) / ppd) * DEG;
+    hv.up = Math.min(90, Math.max(-20, drag.up + (e.clientY - drag.y) / ppd));
+    drawHview();
+  });
   const end = () => { drag = null; };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
   cv.addEventListener('wheel', (e) => { e.preventDefault(); hv.fov = Math.min(140, Math.max(8, hv.fov * (e.deltaY > 0 ? 1.15 : 0.87))); drawHview(); }, { passive: false });
@@ -1071,6 +1160,7 @@ function flyCamera(toPos, toTarget, ms = 1600) {
   tween = { p0: camera.position.clone(), t0: controls.target.clone(), p1: toPos, t1: toTarget, start: performance.now(), ms };
 }
 function flyTo(pin) {
+  if (!pin.group) return;        // a site beyond the polar map has no place on it
   const tgt = mapToWorld(pin.x, pin.y);
   const off = camera.position.clone().sub(controls.target);
   const dist = Math.min(off.length(), 170);
@@ -1182,8 +1272,36 @@ $('findBest').addEventListener('click', () => {
 $('aboutBtn').addEventListener('click', () => $('about').showModal());
 
 // ---------- add a site: named sites and typed coordinates ----------
-const fmtPreset = (lat, lon) => `${Math.abs(lat).toFixed(2)}°S · ${Math.abs(lon).toFixed(2)}°${lon < 0 ? 'W' : 'E'}`;
+const fmtPreset = (lat, lon) => `${Math.abs(lat).toFixed(2)}°${lat < 0 ? 'S' : 'N'} · ${Math.abs(lon).toFixed(2)}°${lon < 0 ? 'W' : 'E'}`;
 $('presetList').innerHTML = PRESETS.map((s, i) => `<button type="button" data-p="${i}"><b>${s[0]}</b><span>${s[1]}</span><i>${fmtPreset(s[2], s[3])}</i></button>`).join('');
+$('offList').innerHTML = OFFSITES.map((s, i) => `<button type="button" data-o="${i}"><b>${s.name}</b><span>${s.note}</span><i>${fmtPreset(s.lat, s.lon)} · ${s.grid}</i></button>`).join('');
+// ---------- sites beyond the polar map ----------
+const siteCache = new Map();
+let globalGrid = null;
+/** Terrain for a point that is not on the polar map: the site's own grids if they are bundled, otherwise the whole-Moon 1.9 km grid. */
+async function offSiteTerrain(lat, lon) {
+  const near = OFFSITES.find((s) => Math.abs(s.lat - lat) < 0.005 && Math.abs((((s.lon - lon) + 540) % 360) - 180) * Math.cos(lat * DEG) < 0.005);
+  if (near) {
+    if (!siteCache.has(near.id)) siteCache.set(near.id, await SiteTerrain.load(near.id));
+    return { site: siteCache.get(near.id), name: near.name };
+  }
+  if (!globalGrid) globalGrid = await GlobalGrid.open();
+  return { site: await SiteTerrain.fromGlobal(globalGrid, lat, lon), name: null };
+}
+async function dropOffSite(lat, lon) {
+  coordMsg('Loading the terrain for this site…');
+  try {
+    const { site, name } = await offSiteTerrain(lat, lon);
+    const pin = addOffPin(site, name);
+    $('sites').close();
+    return pin;
+  } catch (e) { console.warn(e); coordMsg('The terrain for that site did not load. Please try again.', true); return null; }
+}
+$('offList').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-o]'); if (!b) return;
+  const s = OFFSITES[+b.dataset.o];
+  dropOffSite(s.lat, s.lon);
+});
 function dropSite(lat, lon, name) {
   const [x, y] = latLonToMap(lat, lon);
   if (!terrain || !terrain.inside(x, y)) return false;
@@ -1193,7 +1311,8 @@ function dropSite(lat, lon, name) {
   return true;
 }
 const coordMsg = (t, err) => { $('coordMsg').textContent = t; $('coordMsg').classList.toggle('err', !!err); };
-$('addSite').addEventListener('click', () => { coordMsg('The map covers the south pole out to about 81.6°S.'); $('sites').showModal(); });
+const COORD_HELP = 'Any point on the Moon. South of about 81.6°S it lands on the 3D map; anywhere else it is analysed from the whole-Moon 1.9 km grid.';
+$('addSite').addEventListener('click', () => { coordMsg(COORD_HELP); $('sites').showModal(); });
 $('sitesClose').addEventListener('click', () => $('sites').close());
 $('sites').addEventListener('click', (e) => { if (e.target === $('sites')) $('sites').close(); });
 $('presetList').addEventListener('click', (e) => {
@@ -1207,10 +1326,10 @@ $('coordForm').addEventListener('submit', (e) => {
   let lat = num($('latIn').value), lon = num($('lonIn').value);
   if (!isFinite(lat) || !isFinite(lon)) { coordMsg('Enter both numbers, for example 89.45 and 137.31.', true); return; }
   if (Math.abs(lat) > 90 || Math.abs(lon) > 360) { coordMsg('Latitude must be 0 to 90 and longitude 0 to 360.', true); return; }
-  lat = -Math.abs(lat);
+  lat = (/n/i.test($('latIn').value) || (!/s/i.test($('latIn').value) && $('latHemi').value === 'N') ? 1 : -1) * Math.abs(lat);
   if (/w/i.test($('lonIn').value) || $('lonHemi').value === 'W') lon = -Math.abs(lon);
   lon = ((lon + 540) % 360) - 180;
-  if (!dropSite(lat, lon, null)) coordMsg('That point is off this map, which covers the south pole out to about 81.6°S.', true);
+  if (!dropSite(lat, lon, null)) dropOffSite(lat, lon);
 });
 
 // ---------- loop ----------
@@ -1257,7 +1376,7 @@ function frame(now) {
   updateDetail(now);
   updateHover();
   sizePins();
-  for (const p of state.pins) p.ring.scale.setScalar(1 + 0.12 * Math.sin(now / 400 + p.x));
+  for (const p of state.pins) if (p.ring) p.ring.scale.setScalar(1 + 0.12 * Math.sin(now / 400 + p.x));
   renderer.render(scene, camera);
   updateLabels();
 
@@ -1305,7 +1424,7 @@ async function boot() {
     $('intro').classList.add('gone');
     flyCamera(new THREE.Vector3(-170, 210, 330), new THREE.Vector3(0, 0, 0), 3600);
   }, 500);
-  window.__shadowline = { state, terrain, gpu, pyramid, detail, surfaceH, addPin, camera, controls, pick, setExag, get exag() { return EXAG; } };
+  window.__shadowline = { state, terrain, gpu, pyramid, detail, surfaceH, addPin, dropOffSite, offSiteTerrain, camera, controls, pick, setExag, get exag() { return EXAG; } };
 }
 boot().catch((err) => {
   console.error(err);

@@ -190,17 +190,17 @@ table.sum tr.pen td { color: var(--bad); }
 /* Add-a-site dialog */
 .modal-h { display: flex; justify-content: space-between; align-items: center; }
 .modal-h button { margin: 0 !important; width: 34px; height: 34px; padding: 0 !important; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); border-radius: 50% !important; }
-#coordForm { display: grid; grid-template-columns: 1fr 1fr 0.9fr auto; gap: 8px; align-items: end; }
+#coordForm { display: grid; grid-template-columns: 1fr 0.9fr 1fr 0.9fr auto; gap: 8px; align-items: end; }
 #coordForm label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--dim); min-width: 0; }
 #coordForm input, #coordForm select { width: 100%; min-width: 0; height: 40px; font-size: 16px; padding: 6px 9px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.07); color-scheme: dark; -webkit-user-select: text; user-select: text; }
 #coordForm button { height: 40px; margin: 0; padding: 0 16px; border-radius: 10px; white-space: nowrap; }
 #coordMsg.err { color: var(--bad); }
-#presetList { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-#presetList button { margin: 0; text-align: left; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); padding: 9px 11px; cursor: pointer; }
-#presetList button:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.3); }
-#presetList b { display: block; font-size: 13px; }
-#presetList span { display: block; font-size: 11.5px; color: var(--dim); margin-top: 2px; line-height: 1.35; }
-#presetList i { display: block; font-style: normal; font-size: 11px; color: var(--sun); margin-top: 4px; font-variant-numeric: tabular-nums; }
+#presetList, #offList { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#presetList button, #offList button { margin: 0; text-align: left; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); padding: 9px 11px; cursor: pointer; }
+#presetList button:hover, #offList button:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.3); }
+#presetList b, #offList b { display: block; font-size: 13px; }
+#presetList span, #offList span { display: block; font-size: 11.5px; color: var(--dim); margin-top: 2px; line-height: 1.35; }
+#presetList i, #offList i { display: block; font-style: normal; font-size: 11px; color: var(--sun); margin-top: 4px; font-variant-numeric: tabular-nums; }
 
 /* Compare */
 .pin-tab.cmp { padding: 6px 12px; font-weight: 600; }
@@ -345,3 +345,10 @@ table.mis .on-s { color: var(--sun); } table.mis .on-e { color: var(--earth); }
   #aboutBtn { top: auto; right: auto; left: calc(8px + env(safe-area-inset-left)); bottom: calc(var(--above) + 48px); }
   #scaleBtn { top: auto; right: auto; left: calc(46px + env(safe-area-inset-left)); bottom: calc(var(--above) + 48px); }
 }
+
+/* sites beyond the polar map */
+.offmap { margin-top: 10px; padding: 9px 11px; border-radius: 10px; border: 1px solid rgba(93, 180, 255, 0.4); background: rgba(93, 180, 255, 0.08); font-size: 11.5px; line-height: 1.45; color: var(--dim); }
+.offmap b { color: #cfe6ff; }
+.offmap.coarse { border-color: rgba(255, 107, 107, 0.55); background: rgba(255, 107, 107, 0.1); }
+.offmap.coarse b { color: #ffb0b0; }
+canvas.lmap { width: 100%; aspect-ratio: 1; border-radius: 10px; display: block; }

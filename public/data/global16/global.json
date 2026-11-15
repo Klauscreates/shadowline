@@ -1,0 +1,15 @@
+{
+ "label": "1.9 km",
+ "px_per_deg": 16,
+ "pixel_m": 1895.2,
+ "tile_px": 720,
+ "tiles_x": 8,
+ "tiles_y": 4,
+ "unit_m": 0.5,
+ "dir": "global16",
+ "product": "LOLA LDEM_16 (whole Moon, 16 px/deg)",
+ "url": "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/cylindrical/img/ldem_16.img",
+ "layout": "simple cylindrical; row 0 = 90 N, column 0 = longitude 0, east positive; native pixels, not resampled",
+ "min_m": -8981.5,
+ "max_m": 10685.5
+}

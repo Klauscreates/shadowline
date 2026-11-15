@@ -1,0 +1,65 @@
+{
+ "id": "im1",
+ "name": "Odysseus / IM-1",
+ "lat": -80.13,
+ "lon": 1.4399999999999977,
+ "unit_m": 0.5,
+ "projection": "stereographic centred on the site, x east, y north, sphere radius 1737400 m",
+ "levels": [
+  {
+   "label": "60 m",
+   "pixel_m": 60.0,
+   "size": 676,
+   "half_extent_m": 20280.0,
+   "use_radius_m": 20000.0,
+   "file": "im1_0.bin",
+   "product": "LOLA LDEM_512_90S_45S_000_090; LOLA LDEM_512_90S_45S_270_360",
+   "source_px_per_deg": 512,
+   "source_pixel_m": 59.2,
+   "averaged": null,
+   "urls": [
+    "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/cylindrical/img/ldem_512_90s_45s_000_090.img",
+    "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/cylindrical/img/ldem_512_90s_45s_270_360.img"
+   ],
+   "min_m": 990.1264038085938,
+   "max_m": 3178.939208984375,
+   "centre_m": 2594.5
+  },
+  {
+   "label": "240 m",
+   "pixel_m": 240.0,
+   "size": 676,
+   "half_extent_m": 81120.0,
+   "use_radius_m": 80000.0,
+   "file": "im1_1.bin",
+   "product": "LOLA LDEM_128",
+   "source_px_per_deg": 128,
+   "source_pixel_m": 236.9,
+   "averaged": null,
+   "urls": [
+    "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/cylindrical/img/ldem_128.img"
+   ],
+   "min_m": -3609.62109375,
+   "max_m": 3979.389892578125,
+   "centre_m": 2593.1
+  },
+  {
+   "label": "960 m",
+   "pixel_m": 960.0,
+   "size": 696,
+   "half_extent_m": 334080.0,
+   "use_radius_m": 330000.0,
+   "file": "im1_2.bin",
+   "product": "LOLA LDEM_64",
+   "source_px_per_deg": 64,
+   "source_pixel_m": 473.8,
+   "averaged": "2 x 2 source pixels before sampling",
+   "urls": [
+    "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/cylindrical/img/ldem_64.img"
+   ],
+   "min_m": -5634.90478515625,
+   "max_m": 6938.44580078125,
+   "centre_m": 2632.1
+  }
+ ]
+}

@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#04060b">
-<meta name="build" content="40">
+<meta name="build" content="41">
 <meta name="author" content="Nikolai Klaus Stoloff">
 <meta name="ai-disclosure" content="Code written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by the author. No data, images or audio are AI-generated.">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Shadowline — Lunar Landing Site Navigator</title>
 <meta name="description" content="Fly over the Moon's south pole, watch real sunlight sweep across it, and click anywhere to test a landing site for power and Earth contact.">
-<link rel="stylesheet" href="src/style.css?v=40">
+<link rel="stylesheet" href="src/style.css?v=41">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js" } }
 </script>
@@ -114,15 +114,19 @@
   <div class="modal-h"><h2>Add a site</h2><button id="sitesClose" aria-label="Close">✕</button></div>
   <div class="block-title">Type coordinates</div>
   <form id="coordForm">
-    <label>Latitude °S<input id="latIn" type="text" inputmode="decimal" autocomplete="off" placeholder="89.45"></label>
+    <label>Latitude °<input id="latIn" type="text" inputmode="decimal" autocomplete="off" placeholder="89.45"></label>
+    <label>South / North<select id="latHemi"><option value="S">South</option><option value="N">North</option></select></label>
     <label>Longitude °<input id="lonIn" type="text" inputmode="decimal" autocomplete="off" placeholder="137.31"></label>
     <label>East / West<select id="lonHemi"><option value="E">East</option><option value="W">West</option></select></label>
     <button class="primary" type="submit">Drop pin</button>
   </form>
-  <div class="note" id="coordMsg">The map covers the south pole out to about 81.6°S.</div>
-  <div class="block-title">Notable south-pole sites</div>
+  <div class="note" id="coordMsg">Any point on the Moon.</div>
+  <div class="block-title">Notable south-pole sites <span>on the 3D map</span></div>
   <div id="presetList"></div>
   <div class="note">Coordinates are approximate. Mission targets can change; check the mission's own pages before relying on them.</div>
+  <div class="block-title">Beyond the polar map <span>each with its own 60 m terrain</span></div>
+  <div id="offList" class="plist"></div>
+  <div class="note">These sites are not on the 3D map. They get a full report, the horizon view and a local terrain map from NASA height grids centred on the site. Coordinates: Odysseus from NASA / LROC, Apollo 17 lunar module from NASA NSSDC.</div>
 </dialog>
 
 <dialog id="about" class="modal">
@@ -131,10 +135,11 @@
   <p><b>Live light.</b> For the chosen moment, the app works out where the Sun and Earth sit in the Moon's sky and traces a ray from every point of the map towards them. If terrain blocks the ray, that point is in shadow. The Moon's curve is included. The Sun is treated as a disk, so shadow edges are soft.</p>
   <p><b>Heat maps.</b> The same test is repeated across the whole time window and added up: share of time in sunlight, share of time Earth is above the horizon, and both together.</p>
   <p><b>Site test.</b> Click the map, pick a named site, or type coordinates. The app measures the horizon in 720 directions around that spot, then steps through the window to find sunlight, the longest dark stretch, Earth contact, and the longest loss of contact. One lunar day is stepped every 10 minutes, 3 months every hour and 1 year every 6 hours, so sunrise, sunset and the longest dark stretch are good to about one step. "Horizon view" shows the same skyline from eye level, with the Sun and Earth at true size. It also counts down to the next sunset or sunrise, and the next Earthset or Earthrise, from the selected time. With two or more pins, Compare puts them side by side.</p>
+  <p><b>Sites beyond the polar map.</b> The 3D map stops near 81.6°S. A site outside it is analysed from its own terrain instead. Odysseus / IM-1 and Apollo 17 each have three height grids centred on the site: 60 m pixels within 20 km, 240 m to 80 km and 960 m to 330 km, resampled from NASA's SLDEM2015 and LOLA whole-Moon grids. Any other typed coordinates use NASA's whole-Moon LOLA grid at about 1.9 km a pixel. That grid is coarse and the report says so: in tests against finer grids its sunlit share was within 1 point at Apollo 17 but off by 12 points at Odysseus and by more at rugged polar rims, so treat those numbers as rough.</p>
   <p><b>Mission and launch slip.</b> Set a mission length. The arrival date is the Start date in the time bar. The app shows the same mission arriving on time and 1, 3 and 7 days late, stepped every 10 minutes, and "Find arrival windows" searches the next 60 days for the arrival dates with the most sunlight and Earth contact together.</p>
   <p><b>Score.</b> 45% sunlight share + 35% Earth-contact share + 20% gentle slope (full marks under 5°, none over 15°). Sites steeper than 15° are halved. A score of 75 or more is shown as strong (green), 50 to 74 as mixed (yellow) and under 50 as weak (red). The weights are an example, not a NASA standard. It is a quick comparison aid, not a mission rule.</p>
   <p><b>Limits.</b> The map, the live shadows and the heat maps use NASA's 240 m LOLA grid, resampled to 250 m per pixel. When you zoom in, the surface near the centre of the view is redrawn from the 80 m grid, and from the 20 m grid around the eight named sites; a line under the title says which. That sharper surface is drawing only: its shadows still come from the 250 m map, so a shadow edge can sit up to a few hundred metres from where the finer ground would put it. A pinned site's report is redone with finer LOLA grids once they load: the 20 m grid within 10 km where it is bundled (the eight named sites), the 80 m grid out to 20 km anywhere, and the 250 m grid beyond. The badge beside the coordinates names the finest grid actually used. Even 20 m pixels do not show boulders or small craters, and slope is measured over two pixels of that grid, so finer grids usually report steeper ground. "Earth link" means the centre of Earth is above the terrain horizon for an antenna 2 m above ground; it is not a radio link budget. Sun and Earth positions are read from a NASA JPL Horizons table with one row an hour (Nov 2026 to Dec 2027); the 10-minute steps are interpolated between those rows. Outside those dates they are computed in the browser, which agrees with Horizons to 0.008° and with NASA SPICE (DE440) to 0.004°. This is a research and education tool, not flight planning software.</p>
-  <p class="src"><b>Data.</b> LOLA south-pole elevation models LDEM_60S_240MPP_ADJ, LDEM_80S_80MPP_ADJ and LDEM_80S_20MPP_ADJ (NASA GSFC PGDA, LRO LOLA team). Orbit and rotation model: astronomy-engine (MIT). 3D: three.js (MIT).</p>
+  <p class="src"><b>Data.</b> LOLA south-pole elevation models LDEM_60S_240MPP_ADJ, LDEM_80S_80MPP_ADJ and LDEM_80S_20MPP_ADJ (NASA GSFC PGDA, LRO LOLA team). Sites beyond the polar map: SLDEM2015 (LOLA and Kaguya Terrain Camera, 512 and 128 pixels per degree) and LOLA LDEM_512, LDEM_128, LDEM_64 and LDEM_16 (NASA PDS Geosciences Node). Orbit and rotation model: astronomy-engine (MIT). 3D: three.js (MIT).</p>
   <p class="src"><b>AI use.</b> The code was written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by the author. No data or images are AI-generated: terrain is NASA LOLA data, and Sun and Earth positions are computed from published orbit models.</p>
   <form method="dialog"><button class="primary">Close</button></form>
 </dialog>
@@ -156,6 +161,6 @@ setTimeout(function () {
   if (i && !i.classList.contains('gone') && t && t.textContent === 'Loading NASA terrain…') t.textContent = 'Still loading… if this does not change, please reload the page.';
 }, 12000);
 </script>
-<script type="module" src="src/main.js?v=40" onerror="window.__startFail('a file did not load')"></script>
+<script type="module" src="src/main.js?v=41" onerror="window.__startFail('a file did not load')"></script>
 </body>
 </html>

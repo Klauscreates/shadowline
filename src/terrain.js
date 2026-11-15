@@ -1,7 +1,7 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 // CPU side of the terrain: loading, map <-> sphere maths, height sampling,
 // horizon profiles and per-site time series.
-import { SUN_RADIUS_RAD } from './ephemeris.js?v=40';
+import { SUN_RADIUS_RAD } from './ephemeris.js?v=41';
 
 export const R = 1737400;          // lunar reference radius, m
 const DEG = Math.PI / 180;
@@ -300,9 +300,69 @@ function longestRun(flags, stepHours) {
   return best * stepHours;
 }
 
-/** Full site report over a list of ephemeris samples. */
-export function analyseSite(terrain, x, y, samples, stepHours, pyramid = null) {
-  const profile = horizonProfile(terrain, x, y, pyramid);
+/**
+ * The same terrain lookup horizonProfile makes, as an object other code can march along:
+ * ground(px, py, pz, len, t) gives the height (m) under a point of the pole frame that lies
+ * `t` metres along a level ray from the observer, or NaN beyond the map; it also sets `cap`,
+ * the pixel size of the grid that answered. Used by the first-person view and its check.
+ */
+export function polarSampler(terrain, x, y, pyramid = null) {
+  const { up, north, east } = localFrame(x, y);
+  const used = pyramid ? pyramid.usable(x, y) : [];
+  const lead = used[0] || null;
+  const h0 = lead ? lead.height(x, y) : terrain.height(x, y);
+  const rad0 = R + h0 + OBSERVER_M;
+  return {
+    up, north, east, h0, p0: [up[0] * rad0, up[1] * rad0, up[2] * rad0],
+    dt0: lead ? lead.px / 2 : 120, maxSteps: lead ? 6000 : 560, tMax: 330000, cap: 1500,
+    ground(px, py, pz, len, t) {
+      const kmap = 2 * R / (len + pz), mx = px * kmap, my = py * kmap;
+      if (!terrain.inside(mx, my)) return NaN;
+      this.cap = 1500;
+      for (let q = 0; q < used.length; q++) {
+        if (t < used[q].radius) { const hh = used[q].height(mx, my); if (hh === hh) { this.cap = used[q].px; return hh; } }
+      }
+      return terrain.height(mx, my);
+    },
+  };
+}
+
+/** Terrain horizon (radians, HORIZON_N azimuths clockwise from north) marched along any sampler. Same steps as horizonProfile. */
+export function marchHorizon(S) {
+  const { up, north, east, p0 } = S;
+  const out = new Float32Array(HORIZON_N);
+  for (let k = 0; k < HORIZON_N; k++) {
+    const az = (k / HORIZON_N) * 2 * Math.PI;
+    const ca = Math.cos(az), sa = Math.sin(az);
+    const dx = north[0] * ca + east[0] * sa;
+    const dy = north[1] * ca + east[1] * sa;
+    const dz = north[2] * ca + east[2] * sa;
+    let best = -0.5, t = 0, dt = S.dt0;
+    for (let i = 0; i < S.maxSteps; i++) {
+      t += dt;
+      const px = p0[0] + dx * t, py = p0[1] + dy * t, pz = p0[2] + dz * t;
+      const len = Math.hypot(px, py, pz);
+      const hh = S.ground(px, py, pz, len, t);
+      if (hh !== hh) break;
+      const s = (R + hh) / len;
+      const vx = px * s - p0[0], vy = py * s - p0[1], vz = pz * s - p0[2];
+      const vu = vx * up[0] + vy * up[1] + vz * up[2];
+      const vh = Math.sqrt(Math.max(vx * vx + vy * vy + vz * vz - vu * vu, 1e-6));
+      const el = Math.atan2(vu, vh);
+      if (el > best) best = el;
+      dt = Math.min(dt * 1.02, S.cap);
+      if (t > S.tMax) break;
+    }
+    out[k] = best;
+  }
+  return out;
+}
+
+/**
+ * Site report from a horizon profile over a list of ephemeris samples.
+ * `g` carries the ground facts that do not depend on time: { x, y, lat, lon, slope, slopeBaseM }.
+ */
+export function reportFrom(profile, g, samples, stepHours) {
   const n = samples.length;
   const sun = new Float32Array(n), earth = new Uint8Array(n);
   const sunAz = new Float32Array(n), sunEl = new Float32Array(n);
@@ -317,20 +377,27 @@ export function analyseSite(terrain, x, y, samples, stepHours, pyramid = null) {
     dark[i] = s.sunFrac < 0.05 ? 1 : 0;
     mute[i] = s.earthVis ? 0 : 1;
   }
-  // slope over a two-pixel baseline of the finest grid used at the site
-  let slope = terrain.slope(x, y), slopeBaseM = 2 * terrain.px;
-  if (profile.lead) { const sf = profile.lead.slope(x, y); if (sf === sf) { slope = sf; slopeBaseM = 2 * profile.lead.px; } }
+  const slope = g.slope;
   const sunPct = sunSum / n, earthPct = earthSum / n, bothPct = bothSum / n;
   const slopeSafe = Math.min(Math.max((15 - slope) / 10, 0), 1);
   let score = 100 * (0.45 * sunPct + 0.35 * earthPct + 0.20 * slopeSafe);
   if (slope > 15) score *= 0.5;
-  const ll = mapToLatLon(x, y);
   return {
-    x, y, lat: ll.lat, lon: ll.lon, elevation: profile.height, slope, slopeBaseM, fine: profile.fine, terrain: profile.terrain,
+    x: g.x, y: g.y, lat: g.lat, lon: g.lon, elevation: profile.height, slope, slopeBaseM: g.slopeBaseM, fine: profile.fine, terrain: profile.terrain,
     sunPct, earthPct, bothPct, score: Math.round(score),
     longestDarkH: longestRun(dark, stepHours), longestMuteH: longestRun(mute, stepHours),
     profile, series: { sun, earth, sunAz, sunEl, earthAz, earthEl },
   };
+}
+
+/** Full site report over a list of ephemeris samples, for a point of the south-pole map. */
+export function analyseSite(terrain, x, y, samples, stepHours, pyramid = null) {
+  const profile = horizonProfile(terrain, x, y, pyramid);
+  // slope over a two-pixel baseline of the finest grid used at the site
+  let slope = terrain.slope(x, y), slopeBaseM = 2 * terrain.px;
+  if (profile.lead) { const sf = profile.lead.slope(x, y); if (sf === sf) { slope = sf; slopeBaseM = 2 * profile.lead.px; } }
+  const ll = mapToLatLon(x, y);
+  return reportFrom(profile, { x, y, lat: ll.lat, lon: ll.lon, slope, slopeBaseM }, samples, stepHours);
 }
 
 export function scoreOf(sunPct, earthPct, slope) {
