@@ -1,7 +1,7 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 // CPU side of the terrain: loading, map <-> sphere maths, height sampling,
 // horizon profiles and per-site time series.
-import { SUN_RADIUS_RAD } from './ephemeris.js';
+import { SUN_RADIUS_RAD } from './ephemeris.js?v=21';
 
 export const R = 1737400;          // lunar reference radius, m
 const DEG = Math.PI / 180;
@@ -10,6 +10,7 @@ export const OBSERVER_M = 2;       // antenna / panel height above ground
 export async function loadTerrain(onProgress) {
   const meta = await (await fetch('public/data/terrain.json')).json();
   const res = await fetch('public/data/heights.bin');
+  if (!res.ok) throw new Error('The terrain file did not download (' + res.status + ').');
   const total = +res.headers.get('content-length') || meta.size * meta.size * 2;
   const reader = res.body.getReader();
   const bytes = new Uint8Array(meta.size * meta.size * 2);

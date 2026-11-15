@@ -4,13 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#04060b">
+<meta name="build" content="21">
 <meta name="author" content="Nikolai Klaus Stoloff">
 <meta name="ai-disclosure" content="Code written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by the author. No data, images or audio are AI-generated.">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Shadowline — Lunar Landing Site Navigator</title>
 <meta name="description" content="Fly over the Moon's south pole, watch real sunlight sweep across it, and click anywhere to test a landing site for power and Earth contact.">
-<link rel="stylesheet" href="src/style.css">
+<link rel="stylesheet" href="src/style.css?v=21">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js" } }
 </script>
@@ -121,6 +122,23 @@
   <form method="dialog"><button class="primary">Close</button></form>
 </dialog>
 
-<script type="module" src="src/main.js"></script>
+<script>
+// Start-up safety net: a clear message instead of a silent hang, and one automatic refresh if files are out of step.
+window.__fresh = function () { if (!/[?&]fresh=/.test(location.search)) { location.replace(location.pathname + '?fresh=' + Date.now()); return true; } return false; };
+window.__startFail = function (msg) {
+  var i = document.getElementById('intro'), t = document.getElementById('loadText');
+  if (!i || i.classList.contains('gone') || !t) return;
+  if (window.__fresh()) return;
+  t.textContent = 'Could not start. Please reload the page. ' + (msg ? '(' + msg + ')' : '');
+  t.style.color = '#ff6b6b';
+};
+window.addEventListener('error', function (e) { if (e && /ResizeObserver/.test(e.message || '')) return; window.__startFail(e && e.message); });
+window.addEventListener('unhandledrejection', function (e) { window.__startFail(e && e.reason && e.reason.message); });
+setTimeout(function () {
+  var i = document.getElementById('intro'), t = document.getElementById('loadText');
+  if (i && !i.classList.contains('gone') && t && t.textContent === 'Loading NASA terrain…') t.textContent = 'Still loading… if this does not change, please reload the page.';
+}, 12000);
+</script>
+<script type="module" src="src/main.js?v=21" onerror="window.__startFail('a file did not load')"></script>
 </body>
 </html>

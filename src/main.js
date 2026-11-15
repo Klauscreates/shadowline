@@ -1,9 +1,16 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
-import { moonSky } from './ephemeris.js';
-import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N } from './terrain.js';
-import { Gpu } from './gpu.js';
+import { moonSky } from './ephemeris.js?v=21';
+import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N } from './terrain.js?v=21';
+import { Gpu } from './gpu.js?v=21';
+
+// If the browser kept an older copy of the page next to this newer script, reload once to get a matching set.
+const BUILD = '21';
+if (document.querySelector('meta[name="build"]')?.content !== BUILD) {
+  if (!/[?&]fresh=/.test(location.search)) location.replace(location.pathname + '?fresh=' + Date.now());
+  throw new Error('This page is out of date. Please reload.');
+}
 
 const $ = (id) => document.getElementById(id);
 const DEG = Math.PI / 180;
@@ -993,6 +1000,6 @@ async function boot() {
 }
 boot().catch((err) => {
   console.error(err);
-  $('loadText').textContent = 'Could not start: ' + err.message;
+  $('loadText').textContent = 'Could not start: ' + err.message + ' Please reload the page.';
   $('loadText').style.color = '#ff6b6b';
 });
