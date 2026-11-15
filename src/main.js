@@ -1,12 +1,12 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
-import { moonSky, loadHorizons, horizonsRange } from './ephemeris.js?v=23';
-import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N } from './terrain.js?v=23';
-import { Gpu } from './gpu.js?v=23';
+import { moonSky, loadHorizons, horizonsRange } from './ephemeris.js?v=24';
+import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N } from './terrain.js?v=24';
+import { Gpu } from './gpu.js?v=24';
 
 // If the browser kept an older copy of the page next to this newer script, reload once to get a matching set.
-const BUILD = '23';
+const BUILD = '24';
 if (document.querySelector('meta[name="build"]')?.content !== BUILD) {
   if (!/[?&]fresh=/.test(location.search)) location.replace(location.pathname + '?fresh=' + Date.now());
   throw new Error('This page is out of date. Please reload.');
@@ -175,6 +175,10 @@ function rebuildWindow() {
   gpu.resetAccum();
   state.t = Math.min(Math.max(state.t, state.start), state.start + span * DAY - 1);
   for (const p of state.pins) p.report = analyseSite(terrain, p.x, p.y, state.samples, state.stepHours);
+  // show the window's start and end under the time slider
+  $('winStart').textContent = dayLabelY(state.start);
+  $('winEnd').textContent = dayLabelY(state.start + span * DAY);
+  $('winMid').textContent = span <= 31 ? '1 lunar day · 29.5 days' : 'window: ' + windowName();
   renderPanel();
   updateLegend();
 }
@@ -231,6 +235,7 @@ const pct = (v) => Math.round(v * 100) + '%';
 const pct1 = (v) => (v * 100).toFixed(v > 0.9995 || v < 0.0005 ? 0 : 1) + '%';
 const coarse = matchMedia('(pointer: coarse)').matches;
 const dayLabel = (ms) => { const d = new Date(ms); return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate(); };
+const dayLabelY = (ms) => { const d = new Date(ms); return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate() + ', ' + d.getUTCFullYear(); };
 const windowName = () => (state.spanDays >= 100 ? '1 year' : state.spanDays > 31 ? '3 months' : '29.53 days');
 
 const siteLabel = (p) => (p.name ? ' · ' + p.name : p.near ? ' · near ' + p.near : '');
@@ -322,7 +327,7 @@ function missionHtml() {
       <div class="arrlist">${W.top.map((r, k) => `<button data-arr="${r.d}"><b>${k + 1}. Arrive ${dayLabel(state.start + r.d * DAY)}</b><span><span class="on-s">Sun ${pct(r.sun)}</span> · <span class="on-e">Earth ${pct(r.earth)}</span> · both ${pct(r.both)}</span><em>${r.d ? 'Use this date' : 'Current date'}</em></button>`).join('')}</div>
       <div class="note">Bar height is the share of the mission with sunlight and Earth contact together${multi ? ', averaged over the pinned sites' : ''}. ${coarse ? 'Tap' : 'Click'} a bar or a date to move the arrival there.</div>`;
   }
-  return `<div class="block-title">Mission and launch slip <span>arrive ${dayLabel(state.start)}, 00:00 UTC</span></div>
+  return `<div class="block-title">Mission and launch slip <span>${dayLabel(state.start)} → ${dayLabel(state.start + state.missionDays * DAY)} if on time</span></div>
     <div class="mis-row"><label>Mission length <input id="misDays" type="number" inputmode="numeric" min="1" max="60" step="1" value="${state.missionDays}"> days</label><button data-act="windows">Find arrival windows</button></div>
     ${table}
     <div class="note">Each row is the same ${state.missionDays}-day mission starting that many days late. The arrival date is the Start date in the time bar.</div>

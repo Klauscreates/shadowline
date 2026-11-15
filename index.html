@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#04060b">
-<meta name="build" content="23">
+<meta name="build" content="24">
 <meta name="author" content="Nikolai Klaus Stoloff">
 <meta name="ai-disclosure" content="Code written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by the author. No data, images or audio are AI-generated.">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Shadowline — Lunar Landing Site Navigator</title>
 <meta name="description" content="Fly over the Moon's south pole, watch real sunlight sweep across it, and click anywhere to test a landing site for power and Earth contact.">
-<link rel="stylesheet" href="src/style.css?v=23">
+<link rel="stylesheet" href="src/style.css?v=24">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js" } }
 </script>
@@ -87,6 +87,7 @@
       <div class="sky-read" id="skyRead"></div>
     </div>
     <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Time within the window">
+    <div class="scrub-axis"><span id="winStart"></span><span id="winMid">window</span><span id="winEnd"></span></div>
   </div>
   <div class="time-opts">
     <label>Start / arrival <input id="startDate" type="date"></label>
@@ -153,6 +154,6 @@ setTimeout(function () {
   if (i && !i.classList.contains('gone') && t && t.textContent === 'Loading NASA terrain…') t.textContent = 'Still loading… if this does not change, please reload the page.';
 }, 12000);
 </script>
-<script type="module" src="src/main.js?v=23" onerror="window.__startFail('a file did not load')"></script>
+<script type="module" src="src/main.js?v=24" onerror="window.__startFail('a file did not load')"></script>
 </body>
 </html>
