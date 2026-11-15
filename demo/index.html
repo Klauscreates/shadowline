@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shadowline — demo slides</title>
+<style>
+  :root { --sun: #ffc65a; --earth: #5db4ff; --dim: #9aa6b8; }
+  * { box-sizing: border-box; }
+  html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+  body { margin: 0; background: #04060b; color: #eef2f8; font-family: "Inter", "Segoe UI", system-ui, sans-serif; }
+  section { min-height: 100vh; scroll-snap-align: start; display: grid; align-items: center; padding: 5vh 6vw; position: relative; }
+  .n { position: absolute; right: 3vw; bottom: 3vh; color: var(--dim); font-size: 13px; letter-spacing: .1em; }
+  h1 { font-size: clamp(36px, 7vw, 84px); letter-spacing: .3em; margin: 0; }
+  h2 { font-size: clamp(26px, 3.6vw, 46px); margin: 0 0 .5em; line-height: 1.15; }
+  p, li { font-size: clamp(16px, 1.7vw, 22px); line-height: 1.5; color: #cfd7e4; }
+  ul { padding-left: 1.1em; margin: 0; } li { margin: .35em 0; }
+  b { color: #fff; } .s { color: var(--sun); } .e { color: var(--earth); }
+  .two { display: grid; grid-template-columns: 1fr 1.25fr; gap: 4vw; align-items: center; }
+  img { width: 100%; border-radius: 16px; border: 1px solid rgba(255,255,255,.12); display: block; box-shadow: 0 20px 80px rgba(0,0,0,.6); }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .hero { background: linear-gradient(rgba(4,6,11,.25), rgba(4,6,11,.92)), url(5-top.jpg) center/cover; text-align: center; }
+  .hero p { max-width: 760px; margin: 22px auto 0; color: #e6ebf3; }
+  .tag { color: var(--sun); letter-spacing: .18em; font-size: 13px; text-transform: uppercase; margin-bottom: 18px; }
+  .big { font-size: clamp(30px, 4.5vw, 60px); font-weight: 700; color: #fff; line-height: 1; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 26px; }
+  .stat { border: 1px solid rgba(255,255,255,.12); border-radius: 16px; padding: 20px; background: rgba(255,255,255,.03); }
+  .stat p { margin: 8px 0 0; font-size: clamp(13px, 1.25vw, 17px); }
+  a { color: var(--sun); }
+  .btn { display: inline-block; margin-top: 26px; background: linear-gradient(135deg, #ffd27a, #ffab3d); color: #1b1203; padding: 13px 26px; border-radius: 999px; font-weight: 700; text-decoration: none; font-size: 18px; }
+  @media (max-width: 860px) { .two, .stats { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<section class="hero">
+  <div>
+    <div class="tag">NASA Space Apps Challenge 2026</div>
+    <h1>SHADOWLINE</h1>
+    <p>Where on the Moon's south pole can you land, stay powered, and still call home?</p>
+    <a class="btn" href="../">Open the live app</a>
+  </div>
+  <div class="n">1 / 7</div>
+</section>
+
+<section>
+  <div class="two">
+    <div>
+      <h2>At the pole, the Sun never rises more than about 1.5°</h2>
+      <ul>
+        <li>Every hill throws a shadow tens of kilometres long.</li>
+        <li>A good site needs <b class="s">sunlight for power</b> and a <b class="e">clear line to Earth</b> for contact.</li>
+        <li>Both change hour by hour, and a few hundred metres can decide it.</li>
+        <li>Shadowline lets anyone see that and test any spot in one click.</li>
+      </ul>
+    </div>
+    <img src="1-live.jpg" alt="3D view of the lunar south pole with long shadows">
+  </div>
+  <div class="n">2 / 7</div>
+</section>
+
+<section>
+  <div class="two">
+    <div>
+      <h2>Live light: real shadows on real terrain</h2>
+      <ul>
+        <li>NASA LOLA laser-altimeter terrain, 512 km across.</li>
+        <li>Pick any date. Press play and watch the shadow line move.</li>
+        <li>The Moon's curve and the Sun's disk are included, so shadow edges are soft.</li>
+        <li>Runs in the browser on the graphics card. Nothing to install.</li>
+      </ul>
+    </div>
+    <img src="5-top.jpg" alt="Top-down view of sunlight and shadow at the south pole">
+  </div>
+  <div class="n">3 / 7</div>
+</section>
+
+<section>
+  <div>
+    <h2>Heat maps: a whole lunar day added up</h2>
+    <div class="pair">
+      <img src="2-sun.jpg" alt="Map of the share of time each spot is in sunlight">
+      <img src="3-earth.jpg" alt="Map of the share of time Earth is above the horizon">
+    </div>
+    <p><b class="s">Left:</b> share of the window in sunlight. <b class="e">Right:</b> share of the window with Earth above the horizon. A third layer shows both together, and a fourth shows slope.</p>
+  </div>
+  <div class="n">4 / 7</div>
+</section>
+
+<section>
+  <div class="two">
+    <div>
+      <h2>Click anywhere to test a landing site</h2>
+      <ul>
+        <li>Score from 0 to 100, with the reasons shown.</li>
+        <li>Sunlight %, longest dark stretch, Earth-in-view %, longest loss of contact, slope.</li>
+        <li>A 360° horizon view with the Sun and Earth paths.</li>
+        <li><b>Find best sites</b> scans the whole map and pins the top three.</li>
+      </ul>
+    </div>
+    <img src="4-site.jpg" alt="Site report panel for a point on the de Gerlache rim">
+  </div>
+  <div class="n">5 / 7</div>
+</section>
+
+<section>
+  <div>
+    <h2>Checked, not just pretty</h2>
+    <div class="stats">
+      <div class="stat"><div class="big">0.004°</div><p>Largest gap between our Sun and Earth positions and NASA SPICE (DE440), over 134 dates in 13 months.</p></div>
+      <div class="stat"><div class="big">0.1%</div><p>Average gap between the GPU heat maps and an independent site-by-site calculation, over 60 random points.</p></div>
+      <div class="stat"><div class="big">250 m</div><p>Terrain grid size. Smaller rocks and ridges are not seen, and the app says so.</p></div>
+    </div>
+    <p style="margin-top:26px">"Earth in view" means the centre of Earth is above the terrain for an antenna 2 m off the ground. It is not a radio link calculation. Research and education only.</p>
+  </div>
+  <div class="n">6 / 7</div>
+</section>
+
+<section>
+  <div>
+    <h2>Open data, open code</h2>
+    <ul>
+      <li><b>Terrain:</b> LOLA LDEM_60S_240MPP_ADJ, NASA GSFC Planetary Geodesy Data Archive.</li>
+      <li><b>Check data:</b> NASA NAIF SPICE kernels (DE440).</li>
+      <li><b>Libraries:</b> three.js and astronomy-engine, both MIT.</li>
+      <li><b>AI use:</b> code written with Claude (Anthropic) as a coding assistant, directed and reviewed by the author.</li>
+      <li><b>Code:</b> <a href="https://github.com/Klauscreates/shadowline">github.com/Klauscreates/shadowline</a></li>
+    </ul>
+    <a class="btn" href="../">Open the live app</a>
+  </div>
+  <div class="n">7 / 7</div>
+</section>
+<script>
+  addEventListener('keydown', (e) => {
+    const d = ['ArrowDown', 'ArrowRight', 'PageDown', ' '].includes(e.key) ? 1 : ['ArrowUp', 'ArrowLeft', 'PageUp'].includes(e.key) ? -1 : 0;
+    if (d) { e.preventDefault(); scrollBy(0, d * innerHeight); }
+  });
+</script>
+</body>
+</html>

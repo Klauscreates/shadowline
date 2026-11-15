@@ -4,6 +4,8 @@ Fly over the Moon's south pole, watch real sunlight sweep across it, and click a
 
 Built for the NASA Space Apps Challenge 2026 (November 14–15, 2026).
 
+**Live app:** https://klauscreates.github.io/shadowline/ · **Demo slides:** https://klauscreates.github.io/shadowline/demo/
+
 ![Live light view](docs/screenshot-live-light.jpg)
 
 ## What it does
