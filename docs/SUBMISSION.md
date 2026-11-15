@@ -48,7 +48,7 @@ Shadowline is an interactive 3D map of the Moon's south pole that shows where a 
 - The best-site search lands on places known for long sunlight, such as the de Gerlache rim and Malapert Massif.
 
 **Limits (also stated in the app)**
-- 250 m terrain grid: boulders, small craters and local ridges are not seen.
+- Terrain detail is 20 m at best (80 m away from the named sites, 250 m for the regional maps): boulders and small craters are not seen.
 - "Earth in view" means the centre of Earth is above the terrain horizon for an antenna 2 m above ground. It is not a radio link budget.
 - The score is a comparison aid, not a mission rule. Research and education only.
 

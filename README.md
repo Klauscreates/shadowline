@@ -51,7 +51,7 @@ Then open http://localhost:5178. Needs a browser with WebGL2.
 
 ### Limits
 
-- 250 m per pixel: boulders, small craters and local ridges are not seen.
+- Site reports use NASA's 20 m LOLA grid near the eight named sites and the 80 m grid elsewhere; the regional map and heat maps use 250 m. Boulders and small craters are not seen.
 - "Earth in view" means the centre of Earth is above the terrain horizon for an antenna 2 m above ground. It is not a radio link budget.
 - The score is a comparison aid, not a mission rule.
 - Research and education only. Not flight planning software.

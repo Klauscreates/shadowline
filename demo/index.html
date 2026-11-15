@@ -98,8 +98,8 @@
       <h2>Pick a site</h2>
       <ul>
         <li>The app opens with three south-pole sites loaded. Add your own by clicking the map, typing coordinates, or choosing a named site.</li>
-        <li>Here: the <b>IM-2 landing target</b> on Mons Mouton. Over one lunar day it is sunlit <b class="s">52.5%</b> of the time and has Earth in view <b class="e">83.1%</b>.</li>
-        <li>Right now the Sun is 0.6° below the terrain, with <b>sunrise in 3 hours</b>. Earth is in view, with <b>Earthset in 19.5 days</b>.</li>
+        <li>Here: the <b>IM-2 landing target</b> on Mons Mouton. Over one lunar day it is sunlit <b class="s">52.2%</b> of the time and has Earth in view <b class="e">82.5%</b>, measured on NASA's 20 m terrain grid.</li>
+        <li>Right now the Sun is 0.6° below the terrain, with <b>sunrise in 3 hours</b>. Earth is in view, with <b>Earthset in 19.4 days</b>.</li>
         <li>An eye-level horizon view shows the same skyline with the Sun and Earth at true size.</li>
       </ul>
     </div>
@@ -132,8 +132,8 @@
       <h2>Compare the options</h2>
       <ul>
         <li>Up to four sites side by side over the same time window, best value in each row in green.</li>
-        <li><b>The trade-off is plain:</b> the Shackleton ridge has sunlight <b class="s">100%</b> of the lunar day but Earth in view only <b class="e">49.5%</b>. The IM-2 target is the reverse: <b class="s">52.5%</b> sun, <b class="e">83.1%</b> Earth.</li>
-        <li><b>Total sunlight is not the whole story.</b> The de Gerlache rim is sunlit <b class="s">65%</b> of the lunar day, yet its longest stretch without sunlight is <b>9.7 days</b>. The ridge's longest is 0 hours. A lander has to survive that gap on stored power.</li>
+        <li><b>The trade-off is plain:</b> the Shackleton ridge has sunlight <b class="s">99.5%</b> of the lunar day but Earth in view only <b class="e">36%</b>. The IM-2 target is the reverse: <b class="s">52.2%</b> sun, <b class="e">82.5%</b> Earth.</li>
+        <li><b>Total sunlight is not the whole story.</b> The de Gerlache rim is sunlit <b class="s">59%</b> of the lunar day, yet its longest stretch without sunlight is <b>11.8 days</b>. The ridge's longest is 0 hours. A lander has to survive that gap on stored power.</li>
         <li>The Shackleton crater floor, 20 km away, gets no sunlight at all.</li>
         <li>Power, communication and ground slope stay as separate numbers, so a team can weigh them its own way.</li>
       </ul>
@@ -153,8 +153,8 @@
     </div>
     <div class="stats">
       <div class="stat"><div class="big">JPL Horizons</div><p>Sun and Earth positions come straight from NASA JPL Horizons. The in-browser backup agrees to 0.008° (0.004° against NASA SPICE).</p></div>
-      <div class="stat"><div class="big">0.1%</div><p>Average gap between the GPU heat maps and an independent site-by-site calculation, over 60 random points.</p></div>
-      <div class="stat"><div class="big">250 m</div><p>Terrain grid, from NASA's 240 m LOLA data. Smaller rocks and ridges are not seen. "Earth in view" is line of sight, not a radio link budget.</p></div>
+      <div class="stat"><div class="big">0.1%</div><p>Average gap between the GPU heat maps and an independent site-by-site calculation on the same 250 m grid, over 60 random points.</p></div>
+      <div class="stat"><div class="big">20 m</div><p>Site reports use NASA's 20 m LOLA grid near the eight named sites and 80 m elsewhere. The regional map and heat maps use 250 m. "Earth in view" is line of sight, not a radio link budget.</p></div>
     </div>
   </div>
   <div class="n">6 / 7</div>
@@ -166,7 +166,7 @@
     <h2>Open data, open code, any screen</h2>
     <ul>
       <li><b>Phone and desktop:</b> the same app, with touch controls, on a phone or a wide monitor.</li>
-      <li><b>Terrain:</b> LOLA LDEM_60S_240MPP_ADJ, NASA GSFC Planetary Geodesy Data Archive.</li>
+      <li><b>Terrain:</b> NASA LOLA elevation models at 240 m, 80 m and 20 m (LDEM_60S_240MPP, LDEM_80S_80MPP, LDEM_80S_20MPP), NASA GSFC Planetary Geodesy Data Archive.</li>
       <li><b>Check data:</b> NASA NAIF SPICE kernels (DE440).</li>
       <li><b>Libraries:</b> three.js and astronomy-engine, both MIT.</li>
       <li><b>AI use:</b> code written with Claude (Anthropic) as a coding assistant, directed and reviewed by the author.</li>
