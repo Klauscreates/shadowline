@@ -19,6 +19,13 @@
   .two { display: grid; grid-template-columns: 1fr 1.25fr; gap: 4vw; align-items: center; }
   img { width: 100%; border-radius: 16px; border: 1px solid rgba(255,255,255,.12); display: block; box-shadow: 0 20px 80px rgba(0,0,0,.6); }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .tri { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 8px; }
+  figure { margin: 0; } figcaption { font-size: clamp(13px, 1.2vw, 16px); color: #cfd7e4; margin-top: 10px; line-height: 1.4; }
+  .tri img { aspect-ratio: 16 / 10; object-fit: cover; }
+  .three { display: grid; grid-template-columns: 1fr 1fr .9fr; gap: 3vw; align-items: center; }
+  img.tall { max-height: 84vh; width: auto; max-width: 100%; justify-self: center; }
+  .last { grid-template-columns: 1.6fr .55fr; }
+  img.phone { max-height: 80vh; width: auto; max-width: 100%; justify-self: center; border-radius: 26px; }
   .hero { background: linear-gradient(rgba(4,6,11,.25), rgba(4,6,11,.92)), url(5-top.jpg) center/cover; text-align: center; }
   .hero p { max-width: 760px; margin: 22px auto 0; color: #e6ebf3; }
   .tag { color: var(--sun); letter-spacing: .18em; font-size: 13px; text-transform: uppercase; margin-bottom: 18px; }
@@ -28,7 +35,7 @@
   .stat p { margin: 8px 0 0; font-size: clamp(13px, 1.25vw, 17px); }
   a { color: var(--sun); }
   .btn { display: inline-block; margin-top: 26px; background: linear-gradient(135deg, #ffd27a, #ffab3d); color: #1b1203; padding: 13px 26px; border-radius: 999px; font-weight: 700; text-decoration: none; font-size: 18px; }
-  @media (max-width: 860px) { .two, .stats { grid-template-columns: 1fr; } }
+  @media (max-width: 860px) { .two, .stats, .tri, .last, .three { grid-template-columns: 1fr; } img.phone { max-height: 70vh; } }
 </style>
 </head>
 <body>
@@ -59,45 +66,47 @@
 </section>
 
 <section>
-  <div class="two">
-    <div>
-      <h2>Live light: real shadows on real terrain</h2>
-      <ul>
-        <li>NASA LOLA laser-altimeter terrain, 512 km across.</li>
-        <li>Pick any date. Press play and watch the shadow line move.</li>
-        <li>The Moon's curve and the Sun's disk are included, so shadow edges are soft.</li>
-        <li>Runs in the browser on the graphics card. Nothing to install.</li>
-      </ul>
+  <div>
+    <h2>Real light on real terrain, for any date</h2>
+    <div class="tri">
+      <figure><img src="5-top.jpg" alt="Top-down view of sunlight and shadow at the south pole"><figcaption><b>Live light.</b> Shadows at the chosen moment. Press play to watch them move.</figcaption></figure>
+      <figure><img src="2-sun.jpg" alt="Map of the share of time each spot is in sunlight"><figcaption><b class="s">Sunlight.</b> Share of the window each spot is lit.</figcaption></figure>
+      <figure><img src="3-earth.jpg" alt="Map of the share of time Earth is above the horizon"><figcaption><b class="e">Earth link.</b> Share of the window Earth is above the terrain.</figcaption></figure>
     </div>
-    <img src="5-top.jpg" alt="Top-down view of sunlight and shadow at the south pole">
+    <p>NASA LOLA terrain, 512 km across. The Moon's curve, the Sun's disk and Earth's wobble are all in the calculation. It runs in the browser with nothing to install.</p>
   </div>
   <div class="n">3 / 7</div>
 </section>
 
 <section>
-  <div>
-    <h2>Heat maps: a whole lunar day added up</h2>
-    <div class="pair">
-      <img src="2-sun.jpg" alt="Map of the share of time each spot is in sunlight">
-      <img src="3-earth.jpg" alt="Map of the share of time Earth is above the horizon">
+  <div class="two">
+    <div>
+      <h2>Test any site in one click</h2>
+      <ul>
+        <li><b>Right now:</b> how far the <b class="s">Sun</b> and <b class="e">Earth</b> sit above or below the terrain.</li>
+        <li><b>Countdowns:</b> time to the next sunset, sunrise, Earthset or Earthrise.</li>
+        <li><b>Over the window:</b> sunlight share, longest dark stretch, Earth contact, longest loss of contact, slope.</li>
+        <li>A 0 to 100 score with the sum shown, and the full time series as a CSV file.</li>
+      </ul>
     </div>
-    <p><b class="s">Left:</b> share of the window in sunlight. <b class="e">Right:</b> share of the window with Earth above the horizon. A third layer shows both together, and a fourth shows slope.</p>
+    <img class="tall" src="6-report.jpg" alt="Site report for the IM-2 target with countdowns to the next sunrise and Earthset">
   </div>
   <div class="n">4 / 7</div>
 </section>
 
 <section>
-  <div class="two">
+  <div class="three">
     <div>
-      <h2>Click anywhere to test a landing site</h2>
+      <h2>Compare sites side by side</h2>
       <ul>
-        <li>Score from 0 to 100, with the reasons shown.</li>
-        <li>Sunlight %, longest dark stretch, Earth-in-view %, longest loss of contact, slope.</li>
-        <li>A 360° horizon view with the Sun and Earth paths.</li>
+        <li>Up to four sites in one table. The best value in each row is green.</li>
+        <li>Add a site by <b>clicking the map</b>, <b>typing coordinates</b>, or picking a <b>named site</b>.</li>
         <li><b>Find best sites</b> scans the whole map and pins the top three.</li>
+        <li>Change the date and every site updates, so a schedule slip can be checked in seconds.</li>
       </ul>
     </div>
-    <img src="4-site.jpg" alt="Site report panel for a point on the de Gerlache rim">
+    <img class="tall" src="7-compare.jpg" alt="Compare table showing four pinned sites side by side">
+    <img class="tall" src="8-add.jpg" alt="Add a site dialog with coordinate entry and a list of named south-pole sites">
   </div>
   <div class="n">5 / 7</div>
 </section>
@@ -116,9 +125,11 @@
 </section>
 
 <section>
-  <div>
-    <h2>Open data, open code</h2>
+  <div class="two last">
+   <div>
+    <h2>Open data, open code, any screen</h2>
     <ul>
+      <li><b>Phone and desktop:</b> the same app, with touch controls, on a phone or a wide monitor.</li>
       <li><b>Terrain:</b> LOLA LDEM_60S_240MPP_ADJ, NASA GSFC Planetary Geodesy Data Archive.</li>
       <li><b>Check data:</b> NASA NAIF SPICE kernels (DE440).</li>
       <li><b>Libraries:</b> three.js and astronomy-engine, both MIT.</li>
@@ -126,6 +137,8 @@
       <li><b>Code:</b> <a href="https://github.com/Klauscreates/shadowline">github.com/Klauscreates/shadowline</a></li>
     </ul>
     <a class="btn" href="../">Open the live app</a>
+   </div>
+   <img class="phone" src="9-phone.jpg" alt="Shadowline on a phone-sized screen">
   </div>
   <div class="n">7 / 7</div>
 </section>
