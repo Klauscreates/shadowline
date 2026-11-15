@@ -1,7 +1,7 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 // CPU side of the terrain: loading, map <-> sphere maths, height sampling,
 // horizon profiles and per-site time series.
-import { SUN_RADIUS_RAD } from './ephemeris.js?v=24';
+import { SUN_RADIUS_RAD } from './ephemeris.js?v=25';
 
 export const R = 1737400;          // lunar reference radius, m
 const DEG = Math.PI / 180;
@@ -110,6 +110,12 @@ export class TileLevel {
     const [i0, i1, j0, j1] = this._range(x, y, radius), jobs = [];
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (this.has(i, j)) jobs.push(this.loadTile(i, j));
     return Promise.all(jobs);
+  }
+  /** True when every tile touching the square of half-width `radius` around a point exists on the server. */
+  exists(x, y, radius) {
+    const [i0, i1, j0, j1] = this._range(x, y, radius);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (!this.has(i, j)) return false;
+    return true;
   }
   /** True when every tile touching the square of half-width `radius` around a point is loaded. */
   covers(x, y, radius) {

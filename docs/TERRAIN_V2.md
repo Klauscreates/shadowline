@@ -172,3 +172,56 @@ What the table shows, honestly:
 - Sunlight at ridge and rim sites moves by several percentage points between levels, and not always in the same direction (Shackleton ridge over a year: 63 %, 77 %, 65 %). Near a sharp crest, the answer depends on features smaller than the coarser pixels and on exactly where the pin sits. The preset coordinates are approximate, so these rows are not the best-lit points of each ridge.
 - Sites deep in shadow or on broad flat ground (Haworth, Shackleton floor, Cabeus, IM-2) barely change.
 - This is a comparison between grids, not a validation against an independent illumination study. That check has not been done.
+
+## 3. What the 3D view shows
+
+### True-scale switch
+
+The button at the top right switches the drawn heights between **Heights ×3 (exaggerated)**, the default, and **True scale 1 : 1**. It changes the mesh, picking, pins, labels and the "view from site" camera together. It is drawing only: sunlight, Earth contact, slope and elevation were always computed from true heights and are identical in both modes (checked: the report numbers do not change when the switch is flipped, and a click lands on the same map point in both modes).
+
+### Sharper surface near the view centre
+
+When the camera is within 170 km of the point it looks at, the surface around that point is redrawn from finer grids (`src/patch.js`):
+
+- an **80 m patch**, 41 km across (513 × 513 vertices; 385 on touch devices), anywhere on the map;
+- inside it a **20 m patch**, 10 km across, when the camera is within 70 km and 20 m tiles are bundled there (the eight named sites).
+
+Patch vertices sit on the source grid's own pixel centres, so the heights drawn are the NASA values, not resampled ones (checked against the 20 m tiles: largest difference 0.6 m, which is the difference between triangle and bilinear interpolation between pixels). At its edge each patch is fitted to the triangles of the coarser mesh around it: the outer 3 cells lie exactly on that surface and the finer heights fade in over the next 24 cells, and the coarser mesh is not drawn underneath. Measured mismatch along the edges: under 1 mm. No gaps or seams were visible in the views tested.
+
+A line under the title states which grid the surface near the view centre is drawn from.
+
+**Limits, stated plainly:**
+
+- **Shadows on the patches still come from the 250 m light map.** The live shadow ray-march and the heat maps read only the 250 m height map. On a patch the *shape* is 20 m or 80 m data and the direct-light shading uses the finer surface normal, but a shadow edge is where the 250 m terrain puts it, which can be a few hundred metres from where the finer terrain would. Small craters therefore show shading but do not cast their own shadows.
+- The Slope layer keeps using the 250 m map (500 m baseline) on the patches too, so that one legend stays true for the whole picture.
+- The fade-in band at a patch edge (about 0.5 km wide on the 20 m patch, 2 km on the 80 m patch) is a blend of two real grids, not a measurement.
+- The surface colour is a plain grey tone by height. It is not imagery.
+- Pin markers shrink as the camera comes closer so they do not hide the ground; the closest zoom is now 10 km instead of 25 km.
+
+## 4. Plan for full streamed terrain (not started)
+
+This is a plan only. Nothing below is implemented.
+
+1. **Streamed level-of-detail mesh.** Replace the single 768² mesh plus two patches with a quadtree of tiles (or geometry clipmaps) chosen by screen-space error, drawing 250 m → 80 m → 20 m → 10 m (`LDEM_83S_10MPP_ADJ`) → 5 m (`ldem_87s_5mpp`, and the 27 site grids, which add error maps). Tiles would be fetched on demand from a tile store rather than bundled: the 20 m grid alone is about 1.3 GB as int16 for the 512 km map, the 5 m mosaic about 3.2 GB, so they cannot live in the repository or on GitHub Pages. That needs separate hosting (object storage with range requests) and the user's decision on where. The edge-fitting used by the patches generalises to neighbouring tiles of different levels.
+2. **Shadow ray-march on streamed tiles.** Keep the 250 m map for the far field and add a near-field height texture (a clipmap level or virtual-texture page table) around the camera target, so a ray first marches the fine texture and continues in the coarse one, the same hand-over the CPU horizon march already does by distance. The light map would become a set of nested targets as well. Each level has to be validated against the CPU site analysis at the same level before any number from it is shown, and the app must keep saying which grid a shadow came from.
+3. **Real orbiter imagery.** The LROC `NAC_POLE_SOUTH` mosaic (1 m, uncontrolled, 85.5°S to the pole) is the candidate; its file URLs are not yet confirmed (section 1e). Two cautions: a polar mosaic has its own sunlight and shadows baked in, taken at many different Sun directions, so draping it under computed lighting shows two sets of shadows; and permanently shadowed areas are black in it. It should be an optional, clearly labelled "photo" layer rather than the base colour under live light. An uncontrolled mosaic can also be offset from the LOLA grid by tens of metres.
+4. **Lunar-style reflectance.** Replace the Lambert-like term with a Lunar-Lambert (Lommel-Seeliger) or Hapke function, which brightens toward the limb the way regolith does, and add the opposition surge near zero phase. A normal-albedo map (for example from LOLA 1064 nm reflectance, to be surveyed) would give measured brightness instead of the grey tone. This changes appearance only; the sunlit/shadowed numbers do not depend on it.
+5. **Order of work and checks.** (a) tile store and hosting decision; (b) LOD mesh with the existing 250 m light map; (c) near-field shadow march, validated against the CPU analysis; (d) reflectance; (e) imagery layer last. Real-phone performance needs measuring at each step.
+
+## 5. What was verified, and what was not
+
+Verified on 2026-11-15:
+
+- `node tools/check_ephemeris.mjs` and `node tools/check_horizons.mjs` pass (worst difference from JPL Horizons 0.0079°), unchanged.
+- The 80 m tiles rebuilt by the generalised script are byte-identical to the previous ones (same SHA-256).
+- Spot heights agree between the grids (Shackleton floor: -2787 m at 80 m, -2789 m at 20 m; Malapert massif 4798 m and 4801 m).
+- The app loads with no console errors at 1280 × 800 and at 375 × 812 in the local preview after each step; the badge shows "20 m terrain" at the named sites and "80 m terrain" at a pin away from them; the browser reports match `compare_levels.mjs`.
+- Picking stays exact with the patches shown and in both vertical scales (0 px error at three screen points).
+
+Not verified:
+
+- Performance and memory on a real phone. Only a desktop browser in a phone-sized window was used. The patches roughly double the triangles drawn while zoomed in.
+- Devices without linear filtering of float textures use a half-float path for the patches that was not exercised.
+- No comparison against an independent illumination study (for example published average-illumination maps); the table in section 2 compares grids with each other only.
+- LOLA height error at each site (the `_ERR` and `_EFFRES` files were surveyed but not used).
+- Long interactive sessions (many pans across tile borders) were not soak-tested; tiles are fetched and kept in memory without eviction.
