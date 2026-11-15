@@ -132,6 +132,7 @@ const state = {
   lightDirty: true,
   wantBest: false,
   compare: false,
+  missionDays: 14, windows: null,
 };
 state.t = state.start;
 
@@ -242,6 +243,83 @@ const sunEventText = (on, h) => (h === null ? (on ? 'No sunset in this window' :
 const earthEventText = (on, h) => (h === null ? (on ? 'No Earthset in this window' : 'No Earthrise in this window') : (on ? 'Earthset in ' : 'Earthrise in ') + fmtIn(h));
 const clearText = (el, hor) => { const d = (el - hor) / DEG; return `${Math.abs(d).toFixed(1)}° ${d >= 0 ? 'above' : 'below'} the terrain`; };
 
+// ---------- mission scenario: arrival date, mission length, launch slips ----------
+const SLIPS = [0, 1, 3, 7];
+const SEARCH_DAYS = 60;
+let ephCache = { start: 0, list: [] };
+function ephHours(n) {
+  if (ephCache.start !== state.start) ephCache = { start: state.start, list: [] };
+  for (let i = ephCache.list.length; i < n; i++) ephCache.list.push(sampleAt(state.start + i * 3600000));
+  return ephCache.list;
+}
+function pinHours(p, n) {
+  if (!p.mis || p.mis.start !== state.start) p.mis = { start: state.start, sun: [], earth: [] };
+  const L = ephHours(n);
+  for (let i = p.mis.sun.length; i < n; i++) {
+    const s = skyAt(p.report.profile, L[i]);
+    p.mis.sun.push(s.sunFrac); p.mis.earth.push(s.earthVis);
+  }
+  return p.mis;
+}
+/** Sunlight / Earth contact for one site over a mission starting offH hours after the arrival date. */
+function missionStats(p, offH, lenH) {
+  const mm = pinHours(p, offH + lenH);
+  let su = 0, ea = 0, bo = 0, run = 0, best = 0;
+  for (let i = offH; i < offH + lenH; i++) {
+    const a = mm.sun[i], b = mm.earth[i];
+    su += a; ea += b; bo += a * b;
+    if (a < 0.05) { run++; if (run > best) best = run; } else run = 0;
+  }
+  return { sun: su / lenH, earth: ea / lenH, both: bo / lenH, darkH: best };
+}
+const missionPins = () => (state.compare ? state.pins : [state.pins[state.selected]]);
+const windowsKey = () => state.start + '|' + state.missionDays + '|' + missionPins().map((p) => p.letter).join('');
+function findWindows() {
+  const P = missionPins(), lenH = Math.round(state.missionDays * 24), res = [];
+  for (let d = 0; d < SEARCH_DAYS; d++) {
+    let su = 0, ea = 0, bo = 0;
+    for (const p of P) { const s = missionStats(p, d * 24, lenH); su += s.sun; ea += s.earth; bo += s.both; }
+    res.push({ d, sun: su / P.length, earth: ea / P.length, both: bo / P.length });
+  }
+  const top = [];
+  for (const r of [...res].sort((a, b) => b.both - a.both || b.sun - a.sun)) {
+    if (top.every((t) => Math.abs(t.d - r.d) >= 4)) top.push(r);
+    if (top.length === 3) break;
+  }
+  state.windows = { key: windowsKey(), res, top };
+}
+function missionHtml() {
+  const P = missionPins(), lenH = Math.round(state.missionDays * 24), multi = P.length > 1;
+  const slipName = (d) => (d ? `+${d} d` : 'On time');
+  const rows = SLIPS.map((d) => ({ d, st: P.map((p) => missionStats(p, d * 24, lenH)) }));
+  let table;
+  if (multi) {
+    table = `<table class="mis"><thead><tr><th>Arrival</th>${P.map((p) => `<td><span class="pin-dot" style="background:${p.color}">${p.letter}</span></td>`).join('')}</tr></thead><tbody>
+      ${rows.map((r) => `<tr><th>${slipName(r.d)}<small>${dayLabel(state.start + r.d * DAY)}</small></th>${r.st.map((s) => `<td><span class="on-s">${pct(s.sun)}</span> <span class="on-e">${pct(s.earth)}</span><small>dark ${fmtDur(s.darkH)}</small></td>`).join('')}</tr>`).join('')}
+      </tbody></table><div class="key"><span><i style="background:var(--sun)"></i>Sunlit share</span><span><i style="background:var(--earth)"></i>Earth in view</span><span class="dimkey">over the mission</span></div>`;
+  } else {
+    const base = rows[0].st[0];
+    const delta = (v, b) => { const x = Math.round((v - b) * 100); return x ? `<small class="${x > 0 ? 'up' : 'down'}">${x > 0 ? '+' : ''}${x}</small>` : ''; };
+    table = `<table class="mis"><thead><tr><th>Arrival</th><td>Sunlit</td><td>Earth</td><td>Both</td><td>Longest dark</td></tr></thead><tbody>
+      ${rows.map((r) => { const s = r.st[0]; return `<tr><th>${slipName(r.d)}<small>${dayLabel(state.start + r.d * DAY)}</small></th><td><span class="on-s">${pct(s.sun)}</span>${r.d ? delta(s.sun, base.sun) : ''}</td><td><span class="on-e">${pct(s.earth)}</span>${r.d ? delta(s.earth, base.earth) : ''}</td><td>${pct(s.both)}${r.d ? delta(s.both, base.both) : ''}</td><td>${fmtDur(s.darkH)}</td></tr>`; }).join('')}
+      </tbody></table>`;
+  }
+  let win = '';
+  const W = state.windows && state.windows.key === windowsKey() ? state.windows : null;
+  if (W) {
+    win = `<div class="block-title">Best arrival dates <span>next ${SEARCH_DAYS} days, ${state.missionDays}-day mission</span></div>
+      <div class="arrbars" title="Share of the mission with sunlight and Earth contact together, by arrival date">${W.res.map((r) => `<i data-arr="${r.d}" class="${W.top.includes(r) ? 'top' : ''}" style="height:${Math.max(4, Math.round(r.both * 100))}%"></i>`).join('')}</div>
+      <div class="axis" style="padding-left:6px"><span>${dayLabel(state.start)}</span><span>${dayLabel(state.start + 30 * DAY)}</span><span>${dayLabel(state.start + (SEARCH_DAYS - 1) * DAY)}</span></div>
+      <div class="arrlist">${W.top.map((r, k) => `<button data-arr="${r.d}"><b>${k + 1}. Arrive ${dayLabel(state.start + r.d * DAY)}</b><span><span class="on-s">Sun ${pct(r.sun)}</span> · <span class="on-e">Earth ${pct(r.earth)}</span> · both ${pct(r.both)}</span><em>${r.d ? 'Use this date' : 'Current date'}</em></button>`).join('')}</div>
+      <div class="note">Bar height is the share of the mission with sunlight and Earth contact together${multi ? ', averaged over the pinned sites' : ''}. ${coarse ? 'Tap' : 'Click'} a bar or a date to move the arrival there.</div>`;
+  }
+  return `<div class="block-title">Mission and launch slip <span>arrive ${dayLabel(state.start)}, 00:00 UTC</span></div>
+    <div class="mis-row"><label>Mission length <input id="misDays" type="number" inputmode="numeric" min="1" max="60" step="1" value="${state.missionDays}"> days</label><button data-act="windows">Find arrival windows</button></div>
+    ${table}
+    <div class="note">Each row is the same ${state.missionDays}-day mission starting that many days late. The arrival date is the Start date in the time bar.</div>
+    ${win}`;
+}
+
 function compareHtml() {
   const P = state.pins, R = P.map((p) => p.report);
   const row = (label, vals, fmt, hi, cls = '') => {
@@ -269,6 +347,7 @@ function compareHtml() {
     ${row('Latitude', R.map((r) => r.lat), (v) => Math.abs(v).toFixed(2) + '°S', null)}
     ${row('Longitude', R.map((r) => r.lon), (v) => Math.abs(v).toFixed(1) + '°' + (v < 0 ? 'W' : 'E'), null)}
     </tbody></table></div>
+    ${missionHtml()}
     <div class="note">Green marks the best value in each row. ${coarse ? 'Tap' : 'Click'} a site letter to open its full report. Window: ${new Date(state.start).toISOString().slice(0, 10)} + ${windowName()}.</div>`;
 }
 function drawCompare() {
@@ -406,6 +485,7 @@ function renderPanel() {
       <div class="metrics one">
         <div class="metric"><div class="k">Sunlight and Earth contact together</div><div class="v">${pct1(r.bothPct)}</div><div class="s">of the window</div></div>
       </div></div>
+    ${missionHtml()}
     <div class="block-title">Window timeline <span>${coarse ? 'tap' : 'click'} to jump</span></div>
     <canvas class="chart" id="strip" height="58"></canvas>
     <div class="axis"><span>${dayLabel(state.start)}</span><span>${dayLabel(state.start + state.spanDays * DAY / 2)}</span><span>${dayLabel(state.start + state.spanDays * DAY)}</span></div>
@@ -530,6 +610,22 @@ $('pinTabs').addEventListener('click', (e) => {
 $('siteBody').addEventListener('click', (e) => {
   const col = e.target.closest('table.cmp thead [data-i]');
   if (col) { state.selected = +col.dataset.i; state.compare = false; renderPanel(); flyTo(state.pins[state.selected]); return; }
+  const arr = e.target.closest('[data-arr]');
+  if (arr) {
+    const d = +arr.dataset.arr;
+    if (d > 0) {
+      const v = state.start + d * DAY;
+      state.start = v; state.t = v; state.windows = null;
+      $('startDate').value = new Date(v).toISOString().slice(0, 10);
+      rebuildWindow(); setTime(v);
+    }
+    return;
+  }
+  if (e.target.dataset?.act === 'windows') {
+    e.target.textContent = 'Searching…';
+    setTimeout(() => { findWindows(); renderPanel(); }, 30);
+    return;
+  }
   const act = e.target.dataset?.act, pin = state.pins[state.selected];
   if (act === 'csv' && pin) {
     const url = URL.createObjectURL(new Blob([siteCsv(pin)], { type: 'text/csv' }));
@@ -547,6 +643,12 @@ $('siteBody').addEventListener('click', (e) => {
   const rect = e.target.getBoundingClientRect();
   const f = Math.min(Math.max((e.clientX - rect.left - chartCache.x0) / chartCache.ww, 0), 0.9999);
   setTime(state.start + f * state.spanDays * DAY);
+});
+$('siteBody').addEventListener('change', (e) => {
+  if (e.target.id !== 'misDays') return;
+  state.missionDays = Math.min(60, Math.max(1, Math.round(+e.target.value || 14)));
+  state.windows = null;
+  renderPanel();
 });
 $('clearPins').addEventListener('click', () => { while (state.pins.length) removePin(0); });
 $('panelToggle').addEventListener('click', () => {

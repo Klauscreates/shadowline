@@ -74,7 +74,7 @@
     <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Time within the window">
   </div>
   <div class="time-opts">
-    <label>Start <input id="startDate" type="date"></label>
+    <label>Start / arrival <input id="startDate" type="date"></label>
     <label>Window
       <select id="span">
         <option value="29.53">1 lunar day (29.5 d)</option>
@@ -113,6 +113,7 @@
   <p><b>Live light.</b> For the chosen moment, the app works out where the Sun and Earth sit in the Moon's sky and traces a ray from every point of the map towards them. If terrain blocks the ray, that point is in shadow. The Moon's curve is included. The Sun is treated as a disk, so shadow edges are soft.</p>
   <p><b>Heat maps.</b> The same test is repeated across the whole time window and added up: share of time in sunlight, share of time Earth is above the horizon, and both together.</p>
   <p><b>Site test.</b> Click the map, pick a named site, or type coordinates. The app measures the horizon in 720 directions around that spot, then steps through the window to find sunlight, the longest dark stretch, Earth contact, and the longest loss of contact. It also counts down to the next sunset or sunrise, and the next Earthset or Earthrise, from the selected time. With two or more pins, Compare puts them side by side.</p>
+  <p><b>Mission and launch slip.</b> Set a mission length. The arrival date is the Start date in the time bar. The app shows the same mission arriving on time and 1, 3 and 7 days late, and "Find arrival windows" searches the next 60 days for the arrival dates with the most sunlight and Earth contact together.</p>
   <p><b>Score.</b> 45% sunlight share + 35% Earth-contact share + 20% gentle slope (full marks under 5°, none over 15°). Sites steeper than 15° are halved. It is a quick comparison aid, not a mission rule.</p>
   <p><b>Limits.</b> The terrain grid is 250 m per pixel, so boulders, small craters and local ridges are not seen. "Earth link" means the centre of Earth is above the terrain horizon for an antenna 2 m above ground; it is not a radio link budget. Sun and Earth positions agree with NASA SPICE (DE440) to about 0.004°. This is a research and education tool, not flight planning software.</p>
   <p class="src"><b>Data.</b> LOLA south-pole elevation model LDEM_60S_240MPP_ADJ (NASA GSFC PGDA, LRO LOLA team). Orbit and rotation model: astronomy-engine (MIT). 3D: three.js (MIT).</p>

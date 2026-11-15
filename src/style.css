@@ -203,6 +203,33 @@ table.cmp tr.big td { font-size: 17px; }
 table.cmp td small { display: block; font-weight: 400; color: var(--dim); font-size: 10.5px; line-height: 1.3; }
 table.cmp td .on-s { color: var(--sun); } table.cmp td .on-e { color: var(--earth); } table.cmp td .off { color: var(--dim); }
 
+/* Mission scenario */
+.mis-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; }
+.mis-row label { font-size: 12.5px; color: var(--dim); }
+.mis-row input { width: 62px; height: 34px; font-size: 16px; text-align: center; border-radius: 9px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.07); color-scheme: dark; margin: 0 4px; -webkit-user-select: text; user-select: text; }
+.mis-row button { border-radius: 999px; border: 0; padding: 9px 14px; cursor: pointer; font-size: 12.5px; font-weight: 650; background: linear-gradient(135deg, #ffd27a, #ffab3d); color: #1b1203; }
+table.mis { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+table.mis th { text-align: left; font-weight: 600; padding: 6px 6px 6px 0; white-space: nowrap; }
+table.mis thead th, table.mis thead td { color: var(--dim); font-weight: 400; font-size: 11px; }
+table.mis td { text-align: center; padding: 6px 3px; font-weight: 600; }
+table.mis tbody tr { border-top: 1px solid var(--line); }
+table.mis small { display: block; font-weight: 400; color: var(--dim); font-size: 10.5px; }
+table.mis td small { display: inline; margin-left: 3px; }
+table.mis td small.up { color: var(--good); } table.mis td small.down { color: var(--bad); }
+table.mis thead .pin-dot { margin: 0 auto; }
+table.mis .on-s { color: var(--sun); } table.mis .on-e { color: var(--earth); }
+.arrbars { display: flex; align-items: flex-end; gap: 1px; height: 54px; padding: 4px 6px 0; border-radius: 10px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); }
+.arrbars i { flex: 1; background: rgba(88, 224, 160, 0.45); border-radius: 2px 2px 0 0; cursor: pointer; }
+.arrbars i:hover { background: #fff; }
+.arrbars i.top { background: var(--good); }
+.arrlist { display: grid; gap: 6px; margin-top: 8px; }
+.arrlist button { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; text-align: left; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); padding: 8px 11px; cursor: pointer; }
+.arrlist button:hover { background: rgba(255, 255, 255, 0.12); }
+.arrlist b { font-size: 13px; }
+.arrlist span { font-size: 11.5px; color: var(--dim); grid-column: 1; }
+.arrlist em { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-style: normal; font-size: 11.5px; color: var(--sun); }
+.arrlist .on-s { color: var(--sun); } .arrlist .on-e { color: var(--earth); }
+
 /* Large desktop */
 @media (min-width: 1700px) {
   body { font-size: 15px; }
