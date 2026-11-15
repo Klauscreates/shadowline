@@ -18,7 +18,7 @@ Built for the NASA Space Apps Challenge 2026 (November 14–15, 2026).
 - **Add a site.** Type coordinates, or pick from a short list of notable south-pole sites (approximate coordinates).
 - **Compare.** Up to four pins in one side-by-side table, with the best value in each row marked.
 - **Mission and launch slip.** Set a mission length and see the same mission arriving on time and 1, 3 and 7 days late. "Find arrival windows" searches the next 60 days for the best arrival dates.
-- **View from the site.** A low camera view across a site toward the Sun or Earth.
+- **Horizon view.** An eye-level panorama from 2 m above the ground: the terrain skyline used in the calculations, with the Sun and Earth at true size and position. There is also a low 3D camera view across the site.
 - **Open numbers.** Each site report shows how its score adds up, and exports the full time series (UTC, Sun and Earth elevation and azimuth, visibility) as CSV.
 - **Phone and desktop.** Touch controls and a layout that fits an iPhone, a tablet or a wide monitor.
 
@@ -45,7 +45,7 @@ Then open http://localhost:5178. Needs a browser with WebGL2.
 
 ### Checks
 
-- Sun and Earth positions agree with **NASA JPL Horizons to 0.008°** over 396 daily dates (Nov 2026 to Dec 2027): `node tools/check_horizons.mjs`.
+- Sun and Earth positions are **read from NASA JPL Horizons** (hourly, Nov 2026 to Dec 2027; `tools/build_horizons.py`). Outside those dates they are computed in the browser, which agrees with Horizons to 0.008° over 396 daily dates: `node tools/check_horizons.mjs`.
 - Sun and Earth positions agree with NASA SPICE (DE440, `MOON_ME` frame) to **0.004°** over 134 dates across 13 months: `node tools/check_ephemeris.mjs`.
 - GPU heat maps agree with the independent CPU site test to **0.1% on average (1% worst case)** over 60 random points.
 
