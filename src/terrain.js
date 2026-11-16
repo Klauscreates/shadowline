@@ -1,7 +1,7 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 // CPU side of the terrain: loading, map <-> sphere maths, height sampling,
 // horizon profiles and per-site time series.
-import { SUN_RADIUS_RAD } from './ephemeris.js?v=41';
+import { SUN_RADIUS_RAD } from './ephemeris.js?v=43';
 
 export const R = 1737400;          // lunar reference radius, m
 const DEG = Math.PI / 180;
@@ -318,9 +318,9 @@ export function polarSampler(terrain, x, y, pyramid = null) {
     ground(px, py, pz, len, t) {
       const kmap = 2 * R / (len + pz), mx = px * kmap, my = py * kmap;
       if (!terrain.inside(mx, my)) return NaN;
-      this.cap = 1500;
+      this.cap = 1500; this.gpx = terrain.px;          // cap = longest step allowed; gpx = pixel of the grid that answered
       for (let q = 0; q < used.length; q++) {
-        if (t < used[q].radius) { const hh = used[q].height(mx, my); if (hh === hh) { this.cap = used[q].px; return hh; } }
+        if (t < used[q].radius) { const hh = used[q].height(mx, my); if (hh === hh) { this.cap = this.gpx = used[q].px; return hh; } }
       }
       return terrain.height(mx, my);
     },

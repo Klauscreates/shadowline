@@ -4,7 +4,7 @@
 // out to the true horizon distance (tools/build_site.py), or, for typed coordinates with no
 // grids of their own, NASA's whole-Moon LOLA grid at 16 pixels per degree (about 1.9 km).
 // The horizon march, Sun / Earth visibility and the report are the same code the polar map uses.
-import { R, OBSERVER_M, marchHorizon, reportFrom } from './terrain.js?v=41';
+import { R, OBSERVER_M, marchHorizon, reportFrom } from './terrain.js?v=43';
 
 const DEG = Math.PI / 180;
 const TMAX = 330000;      // how far the horizon is searched, m (same as the polar map)
@@ -152,11 +152,11 @@ export class SiteTerrain {
           const k = 2 * R / (len + px * up[0] + py * up[1] + pz * up[2]);
           const mx = (px * east[0] + py * east[1] + pz * east[2]) * k, my = (px * north[0] + py * north[1] + pz * north[2]) * k;
           for (let q = 0; q < levels.length; q++) {
-            if (t < levels[q].radius || q === levels.length - 1) { const hh = levels[q].height(mx, my); if (hh === hh) { this.cap = levels[q].px; return hh; } }
+            if (t < levels[q].radius || q === levels.length - 1) { const hh = levels[q].height(mx, my); if (hh === hh) { this.cap = this.gpx = levels[q].px; return hh; } }
           }
           return NaN;
         }
-        this.cap = global.px;
+        this.cap = this.gpx = global.px;
         return global.height(Math.asin(-pz / len), Math.atan2(px, py));
       },
       site: st,

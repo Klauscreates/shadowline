@@ -1,14 +1,15 @@
 // Shadowline. Written with Claude (Anthropic) as an AI coding assistant, directed and reviewed by Nikolai Klaus Stoloff.
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
-import { moonSky, loadHorizons, horizonsRange } from './ephemeris.js?v=41';
-import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N, TilePyramid } from './terrain.js?v=41';
-import { Gpu } from './gpu.js?v=41';
-import { LocalPatch, gridSurface } from './patch.js?v=41';
-import { SiteTerrain, GlobalGrid, analyseLocal } from './site.js?v=41';
+import { moonSky, loadHorizons, horizonsRange } from './ephemeris.js?v=43';
+import { loadTerrain, analyseSite, skyAt, mapToLatLon, latLonToMap, scoreOf, HORIZON_N, TilePyramid, polarSampler } from './terrain.js?v=43';
+import { Gpu } from './gpu.js?v=43';
+import { LocalPatch, gridSurface } from './patch.js?v=43';
+import { SiteTerrain, GlobalGrid, analyseLocal } from './site.js?v=43';
+import { FirstPerson } from './fpv.js?v=43';
 
 // If the browser kept an older copy of the page next to this newer script, reload once to get a matching set.
-const BUILD = '41';
+const BUILD = '43';
 if (document.querySelector('meta[name="build"]')?.content !== BUILD) {
   if (!/[?&]fresh=/.test(location.search)) location.replace(location.pathname + '?fresh=' + Date.now());
   throw new Error('This page is out of date. Please reload.');
@@ -654,7 +655,7 @@ function renderPanel() {
     </div>
     <div class="block-title">At the selected time</div>
     <div class="now-row"><div class="now-chip sun" id="nowSun"></div><div class="now-chip earth" id="nowEarth"></div></div>
-    <div class="look"><button data-act="hview">Horizon view (eye level)</button>${p.site ? '' : '<button data-act="lookSun">3D toward Sun</button><button data-act="lookEarth">3D toward Earth</button>'}</div>
+    <div class="look"><button data-act="hview">Horizon view (eye level)</button><button data-act="fview">First-person 3D</button>${p.site ? '' : '<button data-act="lookSun">3D toward Sun</button><button data-act="lookEarth">3D toward Earth</button>'}</div>
     ${p.site ? `<div class="offmap ${r.terrain.coarse ? 'coarse' : ''}"><b>${r.terrain.coarse ? 'Coarse terrain: treat these numbers as rough.' : 'Beyond the 3D south-pole map.'}</b> This site is analysed from its own terrain: ${r.terrain.note}.</div>
     <div class="block-title">Terrain around the site <span>${(p.site.levels.length ? 20 : 300)} km across, north up</span></div>
     <canvas class="chart lmap" id="lmap"></canvas>
@@ -815,6 +816,7 @@ function drawLocalMap(p, now) {
 
 function drawCharts() {
   drawHview();
+  drawFview();
   if (state.compare) { drawCompare(); return; }
   const p = state.pins[state.selected]; if (!p || !chartCache || !chartCache.strip.width || !chartCache.horizon.width) return;
   const now = skyAt(p.report.profile, state.sky);
@@ -872,6 +874,7 @@ $('siteBody').addEventListener('click', (e) => {
   }
   const act = e.target.dataset?.act, pin = state.pins[state.selected];
   if (act === 'hview' && pin) { openHview('sun'); return; }
+  if (act === 'fview' && pin) { openFview(); return; }
   if ((act === 'lookSun' || act === 'lookEarth') && pin) { lookFrom(pin, act === 'lookSun' ? 'sun' : 'earth'); return; }
   if (act === 'csv' && pin) {
     const url = URL.createObjectURL(new Blob([siteCsv(pin)], { type: 'text/csv' }));
@@ -1023,6 +1026,7 @@ function hvHorizon(profile, az) {
   return profile.horizon[i] * (1 - a) + profile.horizon[(i + 1) % HORIZON_N] * a;
 }
 function openHview(track) {
+  closeFview();
   hv.open = true; hv.track = track; hv.fov = innerWidth < 900 ? 50 : 70; hv.up = 0;
   $('hview').hidden = false;
   if (innerWidth < 900 && !$('panel').classList.contains('mini')) { $('panel').classList.add('mini'); $('panelToggle').textContent = '▴'; }
@@ -1143,6 +1147,98 @@ $('hview').addEventListener('click', (e) => {
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
   cv.addEventListener('wheel', (e) => { e.preventDefault(); hv.fov = Math.min(140, Math.max(8, hv.fov * (e.deltaY > 0 ? 1.15 : 0.87))); drawHview(); }, { passive: false });
   new ResizeObserver(() => drawHview()).observe(cv);
+}
+
+// ---------- first-person 3D view ----------
+// The real ground around the site as a true-scale 3D mesh seen from the observer's eye (src/fpv.js).
+// The 2D horizon view above stays the reference: it draws the calculated horizon itself.
+const fv = { open: false, fp: null, key: '', check: null, buildMs: 0 };
+const fvKey = (p) => p.letter + '|' + p.report.terrain.label + '|' + (p.site ? 'site' : p.x + ',' + p.y);
+function openFview() {
+  const p = state.pins[state.selected]; if (!p) return;
+  closeHview();
+  fv.open = true; $('fview').hidden = false;
+  if (innerWidth < 900 && !$('panel').classList.contains('mini')) { $('panel').classList.add('mini'); $('panelToggle').textContent = '▴'; }
+  try { if (!fv.fp) fv.fp = new FirstPerson($('fvCanvas'), $('fvOver')); }
+  catch (e) { console.warn(e); $('fvBusy').hidden = false; $('fvBusy').textContent = 'This device could not start a second 3D view. The horizon view shows the same skyline.'; return; }
+  fv.fp.track = 'sun'; fv.fp.fov = 55;
+  drawFview();
+}
+function closeFview() {
+  if (!fv.open) return;
+  fv.open = false; $('fview').hidden = true; fv.key = ''; fv.check = null;
+  if (fv.fp) fv.fp.clearGround();
+}
+function buildFview(p) {
+  fv.key = fvKey(p); fv.check = null;
+  if (fv.fp.ground) fv.fp.clearGround();
+  $('fvBusy').hidden = false; $('fvBusy').textContent = 'Building the ground from the height grids…';
+  setTimeout(() => {
+    if (!fv.open || fv.key !== fvKey(p) || !state.pins.includes(p)) return;
+    const S = p.site ? p.site.sampler() : polarSampler(terrain, p.x, p.y, p.fine ? pyramid : null);
+    const t0 = performance.now();
+    fv.fp.setGround(S, p.report.profile, coarse ? 2 : 1);
+    fv.buildMs = performance.now() - t0;
+    $('fvBusy').hidden = true;
+    drawFview();
+  }, 40);
+}
+function drawFview() {
+  if (!fv.open || !fv.fp) return;
+  const p = state.pins[state.selected];
+  if (!p || !state.sky || state.compare) { closeFview(); return; }
+  if (fv.key !== fvKey(p)) { buildFview(p); return; }
+  if (!fv.fp.ground) return;
+  const now = skyAt(p.report.profile, state.sky);
+  fv.fp.setSky(now, state.sky);
+  fv.fp.draw();
+  $('fvTitle').textContent = `First-person 3D · Site ${p.letter}`;
+  $('fvRead').innerHTML = `<span class="s">Sun ${clearText(now.sunEl, now.sunHor)}</span> · <span class="e">Earth ${clearText(now.earthEl, now.earthHor)}</span>`;
+  const q = (k) => $('fview').querySelector(`[data-fv="${k}"]`);
+  q('sun').classList.toggle('on', fv.fp.track === 'sun'); q('earth').classList.toggle('on', fv.fp.track === 'earth'); q('steep').classList.toggle('on', fv.fp.steep);
+  const c = fv.check, I = fv.fp.info;
+  $('fvNote').innerHTML = `True scale, eye 2 m above the ground, the Moon's curve included. Ground from the ${p.report.terrain.levels.join(' / ')} grid${p.report.terrain.levels.length > 1 ? 's' : ''} (${I.vertices.toLocaleString()} points in ${I.azN} directions). The Sun and Earth are at their computed positions and true sizes. Brightness only shows which slopes face the Sun: cast shadows are not drawn here${fv.fp.steep ? '; red is ground steeper than 15°' : ''}. Drag to look around.`
+    + (c ? `<br><b>Check on this device:</b> the drawn 3D skyline was measured in ${c.a.n} directions and compared with the calculated horizon. ${fvDiff(c.a)} In ${c.b.n} directions half-way between the mesh's own: ${fvDiff(c.b)}` : '');
+}
+/** One line of the skyline check. A difference smaller than one test pixel cannot be told from zero, so it is reported as "under one pixel". */
+function fvDiff(r) {
+  const px = r.pixelDeg, lost = r.missed ? ` ${r.missed} of them were more than 4° off.` : '';
+  if (r.max < px) return `They agree to within one test pixel (${px.toFixed(3)}°) everywhere.${lost}`;
+  return `Largest difference ${r.max.toFixed(3)}° (at ${r.worstAz.toFixed(1)}° from north), typical ${r.rms.toFixed(3)}°; one test pixel is ${px.toFixed(3)}°.${lost}`;
+}
+function checkFview() {
+  if (!fv.fp || !fv.fp.ground) return;
+  const off = 360 / fv.fp.info.azN / 2;                    // half-way between two mesh directions
+  fv.check = { a: fv.fp.check(72, 0), b: fv.fp.check(72, off) };
+  drawFview();
+  return fv.check;
+}
+$('fview').addEventListener('click', (e) => {
+  const a = e.target.closest('[data-fv]')?.dataset.fv; if (!a) return;
+  if (a === 'close') { closeFview(); return; }
+  if (!fv.fp) return;
+  if (a === 'sun' || a === 'earth') fv.fp.track = a;
+  if (a === 'steep') fv.fp.steep = !fv.fp.steep;
+  if (a === 'in') fv.fp.fov = Math.max(4, fv.fp.fov / 1.4);
+  if (a === 'out') fv.fp.fov = Math.min(100, fv.fp.fov * 1.4);
+  if (a === 'check') { checkFview(); return; }
+  drawFview();
+});
+{
+  const cv = $('fvCanvas'); let drag = null;
+  cv.addEventListener('pointerdown', (e) => { if (!fv.fp) return; drag = { x: e.clientX, y: e.clientY, az: fv.fp.az, el: fv.fp.el }; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const ppd = cv.clientHeight / fv.fp.fov;
+    fv.fp.track = null;
+    fv.fp.az = drag.az - ((e.clientX - drag.x) / ppd) * DEG;
+    fv.fp.el = drag.el + ((e.clientY - drag.y) / ppd) * DEG;
+    drawFview();
+  });
+  const end = () => { drag = null; };
+  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  cv.addEventListener('wheel', (e) => { e.preventDefault(); if (!fv.fp) return; fv.fp.fov = Math.min(100, Math.max(4, fv.fp.fov * (e.deltaY > 0 ? 1.15 : 0.87))); drawFview(); }, { passive: false });
+  new ResizeObserver(() => drawFview()).observe(cv);
 }
 
 /** Low third-person view across a site toward the Sun or Earth, so the horizon and long shadows are seen from near ground level. */
@@ -1424,7 +1520,7 @@ async function boot() {
     $('intro').classList.add('gone');
     flyCamera(new THREE.Vector3(-170, 210, 330), new THREE.Vector3(0, 0, 0), 3600);
   }, 500);
-  window.__shadowline = { state, terrain, gpu, pyramid, detail, surfaceH, addPin, dropOffSite, offSiteTerrain, camera, controls, pick, setExag, get exag() { return EXAG; } };
+  window.__shadowline = { state, terrain, gpu, pyramid, detail, surfaceH, addPin, dropOffSite, offSiteTerrain, fv, openFview, checkFview, camera, controls, pick, setExag, get exag() { return EXAG; } };
 }
 boot().catch((err) => {
   console.error(err);
