@@ -225,3 +225,218 @@ Not verified:
 - No comparison against an independent illumination study (for example published average-illumination maps); the table in section 2 compares grids with each other only.
 - LOLA height error at each site (the `_ERR` and `_EFFRES` files were surveyed but not used).
 - Long interactive sessions (many pans across tile borders) were not soak-tested; tiles are fetched and kept in memory without eviction.
+
+---
+
+# Version 2, next round (branch `v2-next`, builds 40 to 43)
+
+Three additions made on 2026-11-15, on top of the live build 28. Every number below is from a run made on that day with the tools named.
+
+## 6. Ten-minute time steps
+
+| Window | Step before | Step now | Samples now |
+|---|---|---|---|
+| 1 lunar day (29.53 days) | 1 h | 10 min | 4,252 |
+| 3 months | 2 h | 1 h | 2,160 |
+| 1 year | 6 h | 6 h | 1,460 |
+| Mission, launch-slip and arrival-window tables | 1 h | 10 min | up to about 17,100 a site (60 arrival dates, missions up to 60 days) |
+
+The NASA JPL Horizons table bundled with the app has one row an hour. Times between rows are interpolated (straight line between the two direction vectors, then renormalised). Measured against the in-browser model at 1,372 epochs, the largest angle is the same half-way between rows as at the rows themselves (Sun 0.0040°, Earth 0.0079°), so the interpolation adds nothing visible at four decimals. The Sun moves about 0.5° an hour in the lunar sky, so an hourly step could place a sunrise up to an hour off; a 10-minute step brings that to 10 minutes.
+
+Countdowns ("Sunset in 2 h 40 min"), the longest dark stretch and longest gap, the CSV header (`step_hours,0.166667` and `step_minutes,10`), the timeline strip and the "sampled every 10 min" note all use the fractional step. Rebuilding the lunar-day window for three pinned sites took about 0.3 s on the development desktop, and 0.5 s for a start date outside the Horizons table, where every sample is computed in the browser.
+
+### Change against hourly sampling (`node tools/compare_steps.mjs`)
+
+#### Lunar-day window: 2026-11-15 + 29.53 days, hourly (709 samples) against 10-minute (4252 samples)
+
+| Site (finest grid) | Sunlit % 1 h | 10 min | change | Earth in view % 1 h | 10 min | change | Longest dark h 1 h | 10 min | Longest gap h 1 h | 10 min | Score 1 h | 10 min |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Shackleton ridge (20 m) | 99.55 | 99.54 | -0.00 | 35.97 | 35.89 | -0.08 | 0.00 | 0.00 | 367.00 | 367.50 | 75 | 75 |
+| de Gerlache rim (20 m) | 58.91 | 58.89 | -0.02 | 50.92 | 50.96 | +0.05 | 282.00 | 282.17 | 306.00 | 305.83 | 52 | 52 |
+| Chang'e-7 candidate (20 m) | 64.28 | 64.27 | -0.02 | 50.92 | 51.06 | +0.14 | 244.00 | 244.83 | 307.00 | 306.67 | 66 | 66 |
+| IM-2 Athena target (20 m) | 52.18 | 52.20 | +0.02 | 82.51 | 82.46 | -0.06 | 325.00 | 325.00 | 124.00 | 124.33 | 72 | 72 |
+| Malapert massif (20 m) | 51.50 | 51.48 | -0.02 | 100.00 | 100.00 | +0.00 | 335.00 | 335.00 | 0.00 | 0.00 | 74 | 74 |
+| Haworth (20 m) | 0.00 | 0.00 | +0.00 | 0.00 | 0.00 | +0.00 | 709.00 | 708.67 | 709.00 | 708.67 | 9 | 9 |
+| LCROSS impact, Cabeus (20 m) | 0.00 | 0.00 | +0.00 | 10.44 | 10.44 | +0.00 | 709.00 | 708.67 | 478.00 | 478.17 | 24 | 24 |
+| Shackleton floor (20 m) | 0.00 | 0.00 | +0.00 | 0.00 | 0.00 | +0.00 | 709.00 | 708.67 | 709.00 | 708.67 | 20 | 20 |
+
+Largest change: sunlit 0.02 points, Earth in view 0.14 points, longest dark 0.83 h, longest gap 0.50 h, score 0.
+
+#### 14-day mission arriving on the start date, hourly against 10-minute
+
+| Site | Sunlit % 1 h | 10 min | Earth % 1 h | 10 min | Both % 1 h | 10 min | Longest dark h 1 h | 10 min |
+|---|---|---|---|---|---|---|---|---|
+| Shackleton ridge | 99.04 | 99.04 | 74.11 | 74.16 | 73.15 | 73.20 | 0.00 | 0.00 |
+| de Gerlache rim | 96.28 | 96.16 | 87.50 | 87.60 | 83.78 | 83.76 | 9.00 | 9.17 |
+| Chang'e-7 candidate | 87.01 | 86.88 | 87.80 | 88.05 | 74.81 | 74.93 | 39.00 | 39.83 |
+| IM-2 Athena target | 97.43 | 97.55 | 100.00 | 100.00 | 97.43 | 97.55 | 3.00 | 2.67 |
+| Malapert massif | 99.23 | 99.14 | 100.00 | 100.00 | 99.23 | 99.14 | 0.00 | 0.00 |
+| Haworth | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 336.00 | 336.00 |
+| LCROSS impact, Cabeus | 0.00 | 0.00 | 22.02 | 22.02 | 0.00 | 0.00 | 336.00 | 336.00 |
+| Shackleton floor | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 336.00 | 336.00 |
+
+Horizons table against the in-browser model, largest angle over 1372 epochs: at table rows Sun 0.0040 deg, Earth 0.0079 deg; half-way between rows (interpolated) Sun 0.0040 deg, Earth 0.0079 deg.
+
+The percentages move by at most 0.14 points and no score changes. What does change is the timing: the longest dark stretch and longest gap shift by up to 0.83 h because their ends are now found to 10 minutes instead of an hour.
+
+## 7. Sites beyond the polar map
+
+The 3D map is a 512 km square on the south pole (out to about 81.6°S along the axes). Odysseus / IM-1 at 80.13°S is just outside it, and anything near the equator is far outside.
+
+### 7a. NASA height data away from the pole (URLs checked 2026-11-15, each answered HTTP 200 with `Accept-Ranges: bytes`)
+
+All under `https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/` (NASA PDS Geosciences Node). All are simple cylindrical (latitude / longitude) raw grids, row 0 at the northern edge, heights above a 1737.4 km sphere.
+
+| Product | Coverage | Pixels per degree (size at the equator) | File(s) | Size | Used here |
+|---|---|---|---|---|---|
+| LOLA `LDEM_16` | whole Moon | 16 (1.9 km) | `lola_gdr/cylindrical/img/ldem_16.img` | 33 MB | yes, bundled whole for typed coordinates |
+| LOLA `LDEM_64` | whole Moon | 64 (474 m) | `…/ldem_64.img` | 531 MB | yes, far field of site grids |
+| LOLA `LDEM_128` | whole Moon | 128 (237 m) | `…/ldem_128.img` | 2.1 GB | yes, middle ring beyond 60° latitude |
+| LOLA `LDEM_256` | whole Moon, 4 tiles | 256 (118 m) | `…/ldem_256_*.img` | listed, not opened | no |
+| LOLA `LDEM_512` | whole Moon, 16 tiles of 45° × 90° | 512 (59 m) | `…/ldem_512_90s_45s_000_090.img` and others | 2.1 GB each | yes, near field beyond 60° latitude |
+| LOLA `LDEM_1024` | whole Moon, 144 tiles of 15° × 30° | 1024 (30 m) | `…/ldem_1024_*.img` | listed, not opened | no (see below) |
+| `SLDEM2015` tiles | 60°S to 60°N, 32 tiles of 30° × 45° | 512 (59 m) | `sldem2015/tiles/float_img/sldem2015_512_00n_30n_000_045_float.img` and others | 1.4 GB each | yes, near field within 60° of the equator |
+| `SLDEM2015` global | 60°S to 60°N | 128 (237 m) | `sldem2015/global/float_img/sldem2015_128_60s_60n_000_360_float.img` | 2.8 GB | yes, middle ring within 60° of the equator |
+| LOLA polar `LDEM_75S_120M` | 75°S to the pole | 120 m | `lola_gdr/polar/img/ldem_75s_120m.img` | 116 MB | no |
+
+Also answered: the USGS mosaic `https://planetarymaps.usgs.gov/mosaic/Lunar_LRO_LOLA_Global_LDEM_118m_Mar2014.tif` (8.5 GB, redirects to S3, accepts ranges). Not used. The USGS SLDEM2015 GeoTIFF name I tried returned 404, so no USGS copy of SLDEM2015 is confirmed.
+
+Why SLDEM2015 near the equator: LOLA's tracks are far apart at low latitude, so the plain LOLA grids are interpolated between them there. SLDEM2015 fills those gaps with Kaguya Terrain Camera stereo heights tied to LOLA. It stops at 60° latitude, so Odysseus uses the LOLA grids.
+
+Not used and why: `LDEM_1024` (30 m) would double the detail near a site but is mostly interpolation away from the poles; LROC NAC stereo models (2 to 5 m, Apollo 17 has one) were not surveyed; nothing here was downloaded whole. `tools/build_site.py` fetches only the rows it needs by HTTP range request (about 260 MB a site) into `tools/raw/`.
+
+### 7b. What was built
+
+**Site grids** (`tools/build_site.py site <id> "<name>" <lat> <lon>`, output in `public/data/sites/`): three square height grids in a stereographic projection centred on the site, x east and y north.
+
+| Level | Pixel | Used out to | Size | Source within 60° of the equator | Source elsewhere |
+|---|---|---|---|---|---|
+| 0 | 60 m | 20 km | 676 × 676 | SLDEM2015 512 px/deg (59 m) | LOLA LDEM_512 (59 m) |
+| 1 | 240 m | 80 km | 676 × 676 | SLDEM2015 128 px/deg (237 m) | LOLA LDEM_128 (237 m) |
+| 2 | 960 m | 330 km | 696 × 696 | LOLA LDEM_64 (474 m), averaged 2 × 2 | same |
+
+Unlike the south-pole tiles, these grids are **resampled** (bilinear) from NASA's latitude / longitude pixels into the site's own projection, and the report says so. The pixel sizes were chosen close to the source's so that little is lost. 330 km is the same search distance the polar map uses; a peak has to stand more than 30 km above the observer's level to be seen from farther. Each site is 2.8 MB.
+
+**Named sites added**
+
+| Site | Coordinates used | Source of the coordinates | Height in the 60 m grid | Published |
+|---|---|---|---|---|
+| Odysseus / IM-1 | 80.13°S, 1.44°E | NASA / LROC: "Odysseus came to rest at 80.13°S, 1.44°E, 2579 m elevation" (LROC image post 1360; same text on nasa.gov, "NASA's LRO Images Intuitive Machines' Odysseus Lander") | 2,595 m | 2,579 m; "the local terrain is sloped at a sporty 12°" (the grid gives 12.3°) |
+| Apollo 17 lunar module | 20.1911°N, 30.7723°E | NASA NSSDC "Apollo Landing Site Coordinates" (from Wagner et al., Icarus 283, 2017) | −2,627 m | not checked against a published height |
+
+Two more sanity checks on the Apollo 17 report, from the app: the Sun peaks at 68.3° elevation (90° minus the 20.19° latitude minus the 1.5° tilt of the Moon's axis gives 68.3°), and Earth stays between 45.0° and 61.9° elevation toward azimuth 238° (west-south-west, over the South Massif, whose skyline there is 11.3°), never setting. The centre of that range, 53.5°, is close to the 53° expected for a point about 36° from the middle of the near side.
+
+The Odysseus coordinates are published to 0.01°, about 300 m, on ground the same page calls 12° steep, so a 16 m height difference is within what the rounding allows.
+
+**Typed coordinates anywhere** use the whole-Moon `LDEM_16` grid at its native pixels (`public/data/global16/`, 32 tiles, 33 MB, fetched only around the site). This is a coarse fallback and the report says "Coarse terrain: treat these numbers as rough", shows the badge "1.9 km terrain", gives the slope baseline as 3,790 m and does not assess hazards.
+
+**In the app.** A site beyond the map has no marker on the 3D map. It has the full report (score, Sun and Earth now, countdowns, power, communications, ground, mission and launch slip, arrival windows, compare, CSV, summary), the eye-level horizon view (which now also looks up, because away from the poles the Sun and Earth climb high), the first-person 3D view (section 8), and a shaded-relief map of the ground around it with slopes over 15° in red. That map is relief shading lit from the Sun's side at a fixed 25°; it draws no cast shadows and no number is taken from it.
+
+### 7c. Checks (`node tools/check_site.mjs`)
+
+```
+1. marchHorizon(polarSampler) against horizonProfile
+   Shackleton ridge, 250 m only: largest difference 0.0e+0 deg
+   Shackleton ridge, tile pyramid: largest difference 0.0e+0 deg
+   IM-2 Athena target, 250 m only: largest difference 0.0e+0 deg
+   IM-2 Athena target, tile pyramid: largest difference 0.0e+0 deg
+   Shackleton floor, 250 m only: largest difference 0.0e+0 deg
+   Shackleton floor, tile pyramid: largest difference 0.0e+0 deg
+```
+
+2-3. Sites on the polar map, analysed three ways (2026-11-15 + 29.53 days, 10-minute steps)
+
+| Site | Route | Finest grid | Elevation m | Slope ° | Sunlit % | Earth in view % | Longest dark h | Horizon vs polar route: largest / RMS ° |
+|---|---|---|---|---|---|---|---|---|
+| IM-2 Athena target | polar map (LOLA 20 / 80 / 250 m polar grids) | 20 m | 5313 | 1.3 | 52.2 | 82.5 | 325.0 | reference |
+| IM-2 Athena target | site grids (LDEM_512 / 128 / 64, whole-Moon files) | 60 m | 5312 | 1.4 | 52.2 | 82.4 | 323.8 | 0.11 / 0.023 |
+| IM-2 Athena target | whole-Moon 1.9 km grid (LDEM_16) | 1.9 km | 5281 | 1.8 | 55.6 | 83.6 | 301.3 | 2.16 / 0.705 |
+| de Gerlache rim | polar map (LOLA 20 / 80 / 250 m polar grids) | 20 m | 1754 | 11.3 | 58.9 | 51.0 | 282.2 | reference |
+| de Gerlache rim | site grids (LDEM_512 / 128 / 64, whole-Moon files) | 60 m | 1754 | 10.1 | 63.1 | 51.1 | 255.3 | 2.00 / 0.685 |
+| de Gerlache rim | whole-Moon 1.9 km grid (LDEM_16) | 1.9 km | 1686 | 5.2 | 97.8 | 51.2 | 0.0 | 11.77 / 5.072 |
+
+Heights of those site grids against the polar grids at the same places (finest polar grid loaded there)
+
+| Site | Site-grid level and ring | Points | Mean difference m | RMS difference m | Largest m |
+|---|---|---|---|---|---|
+| IM-2 Athena target | 60 m, 0 to 20 km | 4000 | -0.2 | 1.7 | 64 |
+| IM-2 Athena target | 240 m, 20 to 80 km | 4000 | -4.1 | 22.7 | 107 |
+| IM-2 Athena target | 960 m, 80 to 330 km | 2052 | -1.7 | 53.3 | 275 |
+| de Gerlache rim | 60 m, 0 to 20 km | 4000 | 0.1 | 1.6 | 33 |
+| de Gerlache rim | 240 m, 20 to 80 km | 4000 | 0.9 | 17.8 | 84 |
+| de Gerlache rim | 960 m, 80 to 330 km | 2718 | -1.1 | 61.2 | 467 |
+
+4. Bundled sites beyond the polar map (2026-11-15 + 29.53 days, 10-minute steps)
+
+| Site | Route | Finest grid | Elevation m | Slope ° | Sunlit % | Earth in view % | Longest dark h | Longest gap h | Score | Horizon vs site grids: largest / RMS ° |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Odysseus / IM-1 | site grids | 60 m | 2595 | 12.3 | 36.8 | 100.0 | 304.5 | 0.0 | 57 | reference |
+| Odysseus / IM-1 | whole-Moon 1.9 km grid | 1.9 km | 2620 | 2.1 | 48.4 | 100.0 | 299.0 | 0.0 | 77 | 14.81 / 4.961 |
+|  | horizon -0.25° to 15.31°; steepest ground within 1 km 41.5°, 11% over 15° | | | | | | | | | |
+| Apollo 17 | site grids | 60 m | -2628 | 1.9 | 47.6 | 100.0 | 370.2 | 0.0 | 76 | reference |
+| Apollo 17 | whole-Moon 1.9 km grid | 1.9 km | -2617 | 2.1 | 47.7 | 100.0 | 369.3 | 0.0 | 76 | 3.13 / 1.189 |
+|  | horizon 0.28° to 14.18°; steepest ground within 1 km 18.4°, 2% over 15° | | | | | | | | | |
+
+
+Reading these:
+
+- **The site-grid route is geometrically right.** Two points that are on the polar map were rebuilt as site grids from the whole-Moon files (a different product, projection and code path). Within 20 km the heights agree with the 20 m and 80 m polar grids to 1.7 m RMS, with no offset. At the IM-2 point the horizon agrees to 0.11° at worst and the sunlit and Earth shares to 0.1 point.
+- **Resolution still matters on a narrow rim.** At the de Gerlache rim point the 60 m site grid gives 63.1 % sunlit against 58.9 % from the 20 m polar grid. Swapping one ring at a time shows the whole difference comes from the nearest 20 km (60 m against 20 m pixels); the 240 m and 960 m rings change the horizon by 0.06° at most. So a 60 m site grid can be several points off on a sharp crest, in the same way the 80 m grid is in section 2.
+- **The 1.9 km fallback is rough, and very rough in polar terrain.** Sunlit share against the finer route: Apollo 17 47.7 % against 47.6 %; IM-2 55.6 % against 52.2 %; Odysseus 48.4 % against 36.8 % (score 77 against 57); de Gerlache rim 97.8 % against 58.9 %. Near the equator the Sun rises high and the horizon matters little; near the poles it is everything.
+
+## 8. First-person 3D view
+
+"First-person 3D" in a site report (`src/fpv.js`) draws the real ground around the site from the observer's eye, 2 m above the surface.
+
+- **True scale, true curvature.** The ground is a mesh whose points are the ones the horizon calculation samples: 720 directions (360 on touch devices), and along each direction the same steps on the same grids (20 m, 80 m, 250 m on the polar map; 60 m, 240 m, 960 m for site grids; 1.9 km for the fallback), each point placed in 3D at its real height on the 1737.4 km sphere. Heights are not exaggerated. At the named polar sites that is 702,001 points and about 1.36 million triangles, built in 1.1 to 1.8 s on the development desktop.
+- **Drawing order instead of a depth buffer.** Rings are drawn from the farthest to the nearest. For a height field seen from its centre that is exact, and it avoids the depth-precision problem of a scene that runs from 2 m to 330 km.
+- **Sun and Earth.** Discs of true angular radius (Sun 0.2666°, Earth from its distance at that moment, with the right phase) at the positions the report computes, drawn before the ground, so the ground hides them exactly as far as the calculation says.
+- **Controls.** Drag to look around (any direction, up to 88° up), wheel or ＋ / − to zoom, Track Sun, Track Earth.
+- **Steep ground.** Ground steeper than 15° over two pixels of the grid in use there is painted red (toggle "Steep ground"). Beyond 20 km the grids are coarse, so distant slopes are averages over hundreds of metres.
+- **Not physical:** brightness is slope-facing (Lambert) shading with a faint fill light. Cast shadows are not drawn, there is no surface texture and no stars. Whether the Sun is hidden at the site is shown by the disc going behind the skyline, not by the ground going dark.
+- The 2D "Horizon view" stays as the reference: it draws the calculated horizon itself.
+
+### Agreement check
+
+The "Check" button renders the ground alone, in flat white, into a strip 4 × 2048 pixels and 8° tall centred on the calculated horizon, reads the pixels back, finds the top of the ground and compares it with `horizonProfile`. One pixel is 0.0039°, so a difference under that cannot be told from zero. It does this in 72 directions that lie on the mesh's own directions, and in 72 more half-way between two of them (offset 0.25°), where the picture interpolates the ground between two columns and the calculation interpolates the horizon angle.
+
+Run in the preview on 2026-11-15 (desktop, 720 directions, start date 2026-11-15):
+
+| Site | Grids | Points | Build time | 72 mesh directions: largest difference | 72 in-between directions: largest / RMS |
+|---|---|---|---|---|---|
+| Shackleton ridge | 20 / 80 / 250 m | 702,001 | 1.8 s | under one pixel (0.004°) | 0.004° / 0.001° |
+| de Gerlache rim | 20 / 80 / 250 m | 702,001 | 1.5 s | under one pixel (0.004°) | 0.031° / 0.005° |
+| IM-2 Athena target | 20 / 80 / 250 m | 702,001 | 1.7 s | under one pixel (0.004°) | 0.008° / 0.002° |
+| Odysseus / IM-1 | 60 / 240 / 960 m | 661,681 | 1.2 s | 0.004° (one pixel) | 0.055° / 0.007° |
+| Apollo 17 | 60 / 240 / 960 m | 661,681 | 1.1 s | under one pixel (0.004°) | 0.047° / 0.007° |
+| Typed 0.674°N 23.473°E | 1.9 km | 133,201 | 0.5 s | under one pixel (0.004°) | under one pixel |
+
+**Largest difference: 0.004° (one test pixel) in the mesh's directions, 0.055° between them.** For scale, the Sun's disc is 0.53° across.
+
+Two things back this up. `tools/check_site.mjs` part 1 shows the ground lookup the mesh uses reproduces `horizonProfile` exactly (difference 0 in all 720 directions, with and without the tile pyramid). And the check does detect errors: with the calculated horizon shifted by 0.05° on purpose, it reported 0.051°.
+
+In the phone-sized preview (360 directions, 351,001 points, built in 0.9 s) the same check gave under one pixel on the mesh directions and 0.035° between them.
+
+## 9. Verified and not verified (this round)
+
+Verified on 2026-11-15, after each of the three features:
+
+- `node tools/check_ephemeris.mjs`, `node tools/check_horizons.mjs` (worst 0.0079°) and `node tools/check_site.mjs` pass.
+- The app loads with no console errors at 1280 × 800 and at 375 × 812 in the `shadowline-finer` preview.
+- Still working, exercised in the preview: launch-slip table, arrival-window search, compare table, CSV export (4,252 rows plus header), score bands, hazards line, true-scale switch, tile-pyramid badges (20 m at the named sites), Slope layer legend, eye-level horizon view.
+- The browser's numbers for the pinned sites match `compare_steps.mjs` and `check_site.mjs` (for example de Gerlache rim 58.89 % sunlit, Odysseus 36.8 % sunlit and 304.5 h longest dark).
+- Refactoring the report code did not change any number: `compare_steps.mjs` output was identical before and after.
+- Odysseus and Apollo 17 open from the site list; a typed point (0.674°N, 23.473°E) opens from the form with the North option; all three show report, horizon view, local map and first-person view.
+
+Not verified:
+
+- **Real phones.** Only a desktop browser in a phone-sized window was used. The first-person view opens a second WebGL context and, on touch devices, builds 351,001 points; its speed and memory on a real phone are unknown. If the second context cannot start, the view shows a message and the 2D horizon view still works (that fallback path was not exercised).
+- Odysseus and Apollo 17 illumination against any independent study or mission record. The only outside checks are Odysseus's published height and slope.
+- Site grids near a pole or across longitude 0 are covered by the two check sites and Odysseus; a site within 20 km of a pole, or straddling 60° latitude, was not built.
+- The 1.9 km fallback at more than the five places listed in 7c.
+- The 3-month and 1-year windows were only spot-checked for the new step (they load, the note reads "sampled every 1 h" and "every 6 h").
+- Frame rate while playing time with the first-person view open was not measured on anything but the development desktop (about 5 ms of script time a time step there).
+
+### Size added to the repository
+
+Tracked files went from 129.3 MB (`origin/main`, build 28) to 168.1 MB: **+38.9 MB**, of which `public/data/global16/` is 33.2 MB (the whole-Moon grid), `public/data/sites/` 5.6 MB (two sites), and code, tools and this document the rest. `tools/raw/` (about 950 MB of fetched rows and the two check sites) is not committed.
